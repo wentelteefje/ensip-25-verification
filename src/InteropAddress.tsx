@@ -42,17 +42,6 @@ const CHAINS: Chain[] = [
 
 // --- Preset examples ------------------------------------------------------
 
-interface Example {
-  input: string;
-  chainShortName: string;
-}
-
-const EXAMPLES: Example[] = [
-  { input: "vitalik.eth", chainShortName: "ethereum" },
-  { input: "nick.eth", chainShortName: "arbitrum" },
-  { input: "0x8335972894E849E15F4A245FCE73de1e08C4a302", chainShortName: "base" },
-];
-
 const CYCLE_EXAMPLES = ["vitalik.eth", "nick.eth", "validator.eth", "jamesbeck.eth"];
 
 // --- Animation config -----------------------------------------------------
@@ -268,14 +257,6 @@ export default function InteropAddress() {
     if (isHexAddress(value.trim()) || value.includes(".")) {
       debounceRef.current = setTimeout(() => resolve(value.trim()), 400);
     }
-  };
-
-  const handleExample = (ex: Example) => {
-    const c = CHAINS.find((ch) => ch.shortName === ex.chainShortName)!;
-    setInput(ex.input);
-    setChain(c);
-    clearTimeout(debounceRef.current);
-    resolve(ex.input);
   };
 
   const togglePlayPause = useCallback(() => {
