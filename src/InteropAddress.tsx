@@ -82,6 +82,46 @@ const buttonVariants: Variants = {
   },
 };
 
+/* Inline SVG icons — no external font; reliable when embedded. Replace paths with Figma export if needed. */
+const ICON_SIZE = 24;
+type IconProps = { size?: number; className?: string; style?: React.CSSProperties };
+
+function IconPlay({ size = ICON_SIZE, className = "", style }: IconProps) {
+  return (
+    <svg className={className} style={style} width={size} height={size} viewBox="0 0 11 14" fill="currentColor" aria-hidden>
+      <path d="M0 14V0L11 7L0 14ZM2 10.35L7.25 7L2 3.65V10.35Z" />
+    </svg>
+  );
+}
+function IconPause({ size = ICON_SIZE, className = "", style }: IconProps) {
+  return (
+    <svg className={className} style={style} width={size} height={size} viewBox="0 0 14 14" fill="currentColor" aria-hidden>
+      <path d="M8 14V0H14V14H8ZM0 14V0H6V14H0ZM10 12H12V2H10V12ZM2 12H4V2H2V12Z" />
+    </svg>
+  );
+}
+function IconCalculate({ size = ICON_SIZE, className = "", style }: IconProps) {
+  return (
+    <svg className={className} style={style} width={size} height={size} viewBox="0 0 18 18" fill="currentColor" aria-hidden>
+      <path d="M5 15H6.5V13H8.5V11.5H6.5V9.5H5V11.5H3V13H5V15ZM10 14.25H15V12.75H10V14.25ZM10 11.75H15V10.25H10V11.75ZM11.1 7.95L12.5 6.55L13.9 7.95L14.95 6.9L13.55 5.45L14.95 4.05L13.9 3L12.5 4.4L11.1 3L10.05 4.05L11.45 5.45L10.05 6.9L11.1 7.95ZM3.25 6.2H8.25V4.7H3.25V6.2ZM2 18C1.45 18 0.975 17.8083 0.575 17.425C0.191667 17.025 0 16.55 0 16V2C0 1.45 0.191667 0.983333 0.575 0.599999C0.975 0.199999 1.45 0 2 0H16C16.55 0 17.0167 0.199999 17.4 0.599999C17.8 0.983333 18 1.45 18 2V16C18 16.55 17.8 17.025 17.4 17.425C17.0167 17.8083 16.55 18 16 18H2ZM2 16H16V2H2V16Z" />
+    </svg>
+  );
+}
+function IconCopy({ size = ICON_SIZE, className = "", style }: IconProps) {
+  return (
+    <svg className={className} style={style} width={size} height={size} viewBox="0 0 10 12" fill="currentColor" aria-hidden>
+      <path d="M3.18 9C2.88 9 2.625 8.895 2.415 8.685C2.205 8.475 2.1 8.22 2.1 7.92V1.08C2.1 0.78 2.205 0.525 2.415 0.315C2.625 0.105 2.88 0 3.18 0H8.22C8.52 0 8.775 0.105 8.985 0.315C9.195 0.525 9.3 0.78 9.3 1.08V7.92C9.3 8.22 9.195 8.475 8.985 8.685C8.775 8.895 8.52 9 8.22 9H3.18ZM3.18 8.1H8.22C8.26 8.1 8.3 8.08 8.34 8.04C8.38 8 8.4 7.96 8.4 7.92V1.08C8.4 1.04 8.38 1 8.34 0.96C8.3 0.92 8.26 0.9 8.22 0.9H3.18C3.14 0.9 3.1 0.92 3.06 0.96C3.02 1 3 1.04 3 1.08V7.92C3 7.96 3.02 8 3.06 8.04C3.1 8.08 3.14 8.1 3.18 8.1ZM1.08 11.1C0.78 11.1 0.525 10.995 0.315 10.785C0.105 10.575 0 10.32 0 10.02V2.28H0.9V10.02C0.9 10.06 0.92 10.1 0.96 10.14C1 10.18 1.04 10.2 1.08 10.2H7.02V11.1H1.08ZM3 8.1V7.92C3 7.96 3 8 3 8.04C3 8.08 3 8.1 3 8.1Z" />
+    </svg>
+  );
+}
+function IconCheck({ size = ICON_SIZE, className = "", style }: IconProps) {
+  return (
+    <svg className={className} style={style} width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+    </svg>
+  );
+}
+
 const dotVariants: Variants = {
   initial: { opacity: 0.3 },
   animate: {
@@ -318,7 +358,7 @@ export default function InteropAddress() {
   return (
     <div className="w-full min-h-screen bg-[var(--color-quartz-0)] antialiased flex items-center justify-center  ">
       <motion.div
-        className="w-full max-w-[720px]mx - auto px - 4"
+        className="w-full max-w-[600px] mx-auto px-4"
         variants={scrollEnterVariants}
         initial="hidden"
         whileInView="visible"
@@ -345,9 +385,7 @@ export default function InteropAddress() {
               className="flex items-center justify-center shrink-0 w-[31px] h-[31px] rounded-[3px]"
               style={{ backgroundColor: `var(--color-${colorTheme}-100)` }}
             >
-              <span className="text-[16px] font-bold" style={{ fontFamily: 'Material Symbols Outlined', fontVariationSettings: "'FILL' 0, 'GRAD' 0", color: `var(--color-${colorTheme}-500)` }}>
-                {isPlaying ? 'pause' : 'play_arrow'}
-              </span>
+              {isPlaying ? <IconPause size={16} style={{ color: `var(--color-${colorTheme}-500)` }} /> : <IconPlay size={16} style={{ color: `var(--color-${colorTheme}-500)` }} />}
             </motion.button >
             {/* Name input pill */}
             < div className="relative bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-2 h-full flex items-center min-w-0 flex-1 sm:flex-initial" >
@@ -439,9 +477,7 @@ export default function InteropAddress() {
               className={`flex items-center justify-center shrink-0 w-[31px] h-[31px] rounded-[3px] transition-opacity ${!input.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
               style={{ backgroundColor: `var(--color-${colorTheme}-100)` }}
             >
-              <span className="text-[16px] font-bold" style={{ fontFamily: 'Material Symbols Outlined', fontVariationSettings: "'FILL' 0, 'GRAD' 0", color: `var(--color-${colorTheme}-500)` }}>
-                calculate
-              </span>
+              <IconCalculate size={16} style={{ color: `var(--color-${colorTheme}-500)` }} />
             </motion.button >
 
 
@@ -640,12 +676,7 @@ function OutputRow({
           className="shrink-0 cursor-pointer"
           style={{ color: '#1d1c1c' }}
         >
-          <span
-            className="text-[16px] font-extralight"
-            style={{ fontFamily: 'Material Symbols Outlined', fontVariationSettings: "'FILL' 0, 'GRAD' 0" }}
-          >
-            {copied ? 'check' : 'content_copy'}
-          </span>
+          {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
         </motion.button>
       </div>
       {truncated && (
