@@ -617,6 +617,7 @@ function OutputRow({
   accentColor: ColorTheme;
 }) {
   const [copied, setCopied] = useState(false);
+  const [textRevealed, setTextRevealed] = useState(false);
 
   const { ref: mainRef, replay: replayMain } = useScramble({
     text: truncated ?? value,
@@ -625,6 +626,7 @@ function OutputRow({
     step: 1,
     scramble: 4,
     seed: 0,
+    onAnimationEnd: () => setTextRevealed(true),
   });
 
   const { ref: fullRef, replay: replayFull } = useScramble({
@@ -636,8 +638,9 @@ function OutputRow({
     seed: 0,
   });
 
-  // Replay animation when value changes
+  // Replay animation when value changes; hide copy icon until type-out finishes
   useEffect(() => {
+    setTextRevealed(false);
     replayMain();
     if (truncated) {
       replayFull();
@@ -658,7 +661,7 @@ function OutputRow({
       >
         {label}
       </span>
-      <div className="flex items-baseline gap-[2px]">
+      <div className="flex items-baseline gap-[4px]">
         <span
           ref={mainRef}
           className="text-[14px] sm:text-[16px] tracking-[-0.32px] break-all"
@@ -669,15 +672,21 @@ function OutputRow({
           }}
           title={value}
         />
-        <motion.button
-          onClick={handleCopy}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          className="shrink-0 cursor-pointer"
-          style={{ color: '#1d1c1c' }}
-        >
-          {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
-        </motion.button>
+        {textRevealed && value && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onClick={handleCopy}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            className="shrink-0 cursor-pointer inline-flex items-center justify-center"
+            style={{ color: '#1d1c1c' }}
+          >
+            <span style={{ transform: 'scale(0.9)' }}>
+              {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+            </span>
+          </motion.button>
+        )}
       </div>
       {truncated && (
         <span
