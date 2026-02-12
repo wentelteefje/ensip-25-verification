@@ -334,7 +334,7 @@ export default function InteropAddress() {
             Interoperable Addresses
           </h1>
         </motion.div >
-        <motion.section className="place-content-start flex flex-col max-w-[320px] mx-auto">
+        <motion.section className="place-content-start flex flex-col max-w-[400px] mx-auto">
           {/* Input row */}
           < motion.div className="flex items-center justify-center gap-[6px] mb-[5px] min-h-[31px]" variants={scrollEnterItemVariants} >
             {/* Play/Pause button */}
@@ -617,7 +617,7 @@ function OutputRow({
   return (
     <div className="flex flex-col gap-[2px]">
       <span
-        className="text-[8px] font-medium uppercase tracking-[0.48px] opacity-70 text-[var(--color-quartz-900)]"
+        className="text-[11px] font-medium uppercase tracking-[0.48px] opacity-70 text-[var(--color-quartz-900)]"
         style={{ fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace', fontFeatureSettings: "'ss01'" }}
       >
         {label}
@@ -638,10 +638,10 @@ function OutputRow({
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
           className="shrink-0 cursor-pointer"
-          style={{ color: '#595755' }}
+          style={{ color: '#1d1c1c' }}
         >
           <span
-            className="text-[10.32px] font-extralight"
+            className="text-[16px] font-extralight"
             style={{ fontFamily: 'Material Symbols Outlined', fontVariationSettings: "'FILL' 0, 'GRAD' 0" }}
           >
             {copied ? 'check' : 'content_copy'}
@@ -651,7 +651,7 @@ function OutputRow({
       {truncated && (
         <span
           ref={fullRef}
-          className="text-[9px] tracking-[-0.18px] text-[var(--color-quartz-350)] break-all"
+          className="text-[10px] tracking-[-0.18px] text-[var(--color-quartz-350)] break-all"
           style={{ fontFamily: 'ABC Monument Grotesk Mono, monospace', fontFeatureSettings: "'ss01'" }}
         />
       )}
