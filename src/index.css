@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+/* ABC Monument Grotesk font family */
+@import url('https://fonts.cdnfonts.com/css/abc-monument-grotesk');
+
+/* Material Symbols Outlined */
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
+
+/* Reset for embedding */
+body {
+  margin: 0;
+  padding: 0;
+}
+
+#root {
+  width: 100%;
+  min-height: 100%;
+}
+
+@utility scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Design system colors */
+:root {
+  --color-quartz-0: #ffffff;
+  --color-quartz-50: #faf9f7;
+  --color-quartz-100: #eeeded;
+  --color-quartz-350: #a1a1a1;
+  --color-quartz-900: #191919;
+
+  --color-citrine-100: #f8f7e2;
+  --color-citrine-500: #914b1c;
+
+  --color-peridot-100: #d1eedf;
+  --color-peridot-500: #007c20;
+
+  --color-magenta-100: #fce4ec;
+  --color-magenta-500: #ed2496;
+
+  --color-azure-100: #e1f5fe;
+  --color-azure-500: #0082bb;
+}

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Embedded Interoperable Address Demo</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+      color: #333;
+    }
+
+    h1 {
+      font-size: 2em;
+      margin-bottom: 0.5em;
+    }
+
+    p {
+      margin-bottom: 1.5em;
+    }
+
+    /* Sandbox iframe container */
+    .demo-container {
+      margin: 2em 0;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      background: white;
+    }
+
+    .demo-container iframe {
+      width: 100%;
+      border: none;
+      display: block;
+      min-height: 500px;
+    }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      body {
+        padding: 12px;
+      }
+
+      .demo-container iframe {
+        min-height: 600px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <article>
+    <h1>Understanding Interoperable Addresses</h1>
+
+    <p>
+      ERC-7930 and ERC-7828 introduce a standardized way to represent blockchain addresses
+      that work across multiple chains. Instead of managing different addresses for different
+      networks, you can use a single human-readable identifier.
+    </p>
+
+    <p>
+      The format is simple: <code>name@chain</code>. For example, <code>vitalik.eth@base</code>
+      resolves to Vitalik's address on the Base network. Try it out in the interactive demo below:
+    </p>
+
+    <!-- Embedded sandbox -->
+    <div class="demo-container">
+      <iframe
+        src="http://localhost:5174"
+        title="Interoperable Address Demo"
+        loading="lazy"
+        sandbox="allow-scripts allow-same-origin"
+      ></iframe>
+    </div>
+
+    <p>
+      This interoperable format makes cross-chain interactions more intuitive and reduces
+      the risk of sending assets to the wrong address on the wrong chain.
+    </p>
+
+    <h2>How It Works</h2>
+
+    <p>
+      The demo above resolves ENS names to their corresponding addresses and combines them
+      with chain identifiers (CAIP-2 format). The system looks up the ENS name, retrieves
+      the Ethereum address, and presents it alongside the chain-specific identifier.
+    </p>
+  </article>
+</body>
+</html>
