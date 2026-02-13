@@ -1,8 +1,9 @@
 /**
  * InteropAddress — ERC-7930/7828 ENS resolution demo.
- * - Play/pause cycles through vitalik.eth → nick.eth → validator.eth → jamesbeck.eth
+ * - Play/pause cycles ENS names (vitalik.eth → nick.eth → validator.eth → jamesbeck.eth)
+ *   and networks (Ethereum → Arbitrum → Base → Optimism → Polygon) in sync.
  * - Scroll-in-view orchestrated enter animation (header → input → output)
- * - Play/pause uses Material Symbols play_arrow and pause
+ * - Chain pill animates (opacity/y) when network changes during autoplay.
  */
 import { useState, useCallback, useRef, useEffect } from "react";
 import { motion, AnimatePresence, type Variants } from "motion/react";
@@ -215,6 +216,7 @@ export default function InteropAddress() {
   const cycleIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(
     undefined
   );
+  const chainCycleRef = useRef(0);
   const typeTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined
   );
@@ -303,19 +305,22 @@ export default function InteropAddress() {
     setIsPlaying((prev) => !prev);
   }, []);
 
-  // Handle play/pause cycling — type in each name character by character
+  // Handle play/pause cycling — type each name and advance network in sync
   useEffect(() => {
     if (isPlaying) {
+      chainCycleRef.current = 0;
+      setChain(CHAINS[0]);
       const currentName = CYCLE_EXAMPLES[cycleIndex];
       typeInName(currentName);
 
       cycleIntervalRef.current = setInterval(() => {
         setCycleIndex((prev) => {
           const nextIndex = (prev + 1) % CYCLE_EXAMPLES.length;
-          const nextName = CYCLE_EXAMPLES[nextIndex];
-          typeInName(nextName);
+          typeInName(CYCLE_EXAMPLES[nextIndex]);
           return nextIndex;
         });
+        chainCycleRef.current = (chainCycleRef.current + 1) % CHAINS.length;
+        setChain(CHAINS[chainCycleRef.current]);
       }, 3500);
     } else {
       clearInterval(cycleIntervalRef.current);
@@ -356,7 +361,62 @@ export default function InteropAddress() {
   }, [state.status, state.status === "resolved" ? state.address : undefined, interopName, chain.caipId]);
 
   return (
-    <div className="w-full min-h-screen bg-[var(--color-quartz-0)] antialiased flex items-center justify-center  ">
+    <div className="w-full min-h-screen bg-[var(--color-quartz-0)] antialiased flex items-center justify-center relative overflow-hidden">
+      {/* Background pattern */}
+      <div className="absolute inset-0 flex items-center justify-center opacity-[0.4]">
+        <svg width="320" height="200" viewBox="0 0 320 200" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full" preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <pattern id="grid-pattern" x="0" y="0" width="320" height="200" patternUnits="userSpaceOnUse">
+              <g clipPath="url(#clip0_33_2)">
+                <path d="M2 6C2 2.68629 4.68629 0 8 0H32C35.3137 0 38 2.68629 38 6V34C38 37.3137 35.3137 40 32 40H8C4.68629 40 2 37.3137 2 34V6Z" fill="white"/>
+                <path d="M46 38C42.6863 38 40 35.3137 40 32V8C40 4.68629 42.6863 2 46 2H74C77.3137 2 80 4.68629 80 8V32C80 35.3137 77.3137 38 74 38H46Z" fill="#FAF9F7"/>
+                <path d="M82 6C82 2.68629 84.6863 0 88 0H112C115.314 0 118 2.68629 118 6V34C118 37.3137 115.314 40 112 40H88C84.6863 40 82 37.3137 82 34V6Z" fill="white"/>
+                <path d="M126 38C122.686 38 120 35.3137 120 32V8C120 4.68629 122.686 2 126 2H154C157.314 2 160 4.68629 160 8V32C160 35.3137 157.314 38 154 38H126Z" fill="#FAF9F7"/>
+                <path d="M162 6C162 2.68629 164.686 0 168 0H192C195.314 0 198 2.68629 198 6V34C198 37.3137 195.314 40 192 40H168C164.686 40 162 37.3137 162 34V6Z" fill="white"/>
+                <path d="M206 38C202.686 38 200 35.3137 200 32V8C200 4.68629 202.686 2 206 2H234C237.314 2 240 4.68629 240 8V32C240 35.3137 237.314 38 234 38H206Z" fill="#FAF9F7"/>
+                <path d="M242 6C242 2.68629 244.686 0 248 0H272C275.314 0 278 2.68629 278 6V34C278 37.3137 275.314 40 272 40H248C244.686 40 242 37.3137 242 34V6Z" fill="white"/>
+                <path d="M282 6C282 2.68629 284.686 0 288 0H312C315.314 0 318 2.68629 318 6V34C318 37.3137 315.314 40 312 40H288C284.686 40 282 37.3137 282 34V6Z" fill="white"/>
+                <path d="M6 78C2.68629 78 0 75.3137 0 72L0 48C0 44.6863 2.68629 42 6 42H34C37.3137 42 40 44.6863 40 48V72C40 75.3137 37.3137 78 34 78H6Z" fill="#FAF9F7"/>
+                <path d="M42 46C42 42.6863 44.6863 40 48 40H72C75.3137 40 78 42.6863 78 46V74C78 77.3137 75.3137 80 72 80H48C44.6863 80 42 77.3137 42 74V46Z" fill="white"/>
+                <path d="M82 46C82 42.6863 84.6863 40 88 40H112C115.314 40 118 42.6863 118 46V74C118 77.3137 115.314 80 112 80H88C84.6863 80 82 77.3137 82 74V46Z" fill="white"/>
+                <path d="M126 78C122.686 78 120 75.3137 120 72V48C120 44.6863 122.686 42 126 42H154C157.314 42 160 44.6863 160 48V72C160 75.3137 157.314 78 154 78H126Z" fill="#FAF9F7"/>
+                <path d="M162 46C162 42.6863 164.686 40 168 40H192C195.314 40 198 42.6863 198 46V74C198 77.3137 195.314 80 192 80H168C164.686 80 162 77.3137 162 74V46Z" fill="white"/>
+                <path d="M202 46C202 42.6863 204.686 40 208 40H232C235.314 40 238 42.6863 238 46V74C238 77.3137 235.314 80 232 80H208C204.686 80 202 77.3137 202 74V46Z" fill="white"/>
+                <path d="M246 78C242.686 78 240 75.3137 240 72V48C240 44.6863 242.686 42 246 42H274C277.314 42 280 44.6863 280 48V72C280 75.3137 277.314 78 274 78H246Z" fill="#FAF9F7"/>
+                <path d="M282 46C282 42.6863 284.686 40 288 40H312C315.314 40 318 42.6863 318 46V74C318 77.3137 315.314 80 312 80H288C284.686 80 282 77.3137 282 74V46Z" fill="white"/>
+                <path d="M6 118C2.68629 118 0 115.314 0 112L0 88C0 84.6863 2.68629 82 6 82H34C37.3137 82 40 84.6863 40 88V112C40 115.314 37.3137 118 34 118H6Z" fill="#FAF9F7"/>
+                <path d="M42 86C42 82.6863 44.6863 80 48 80H72C75.3137 80 78 82.6863 78 86V114C78 117.314 75.3137 120 72 120H48C44.6863 120 42 117.314 42 114V86Z" fill="white"/>
+                <path d="M86 118C82.6863 118 80 115.314 80 112V88C80 84.6863 82.6863 82 86 82H114C117.314 82 120 84.6863 120 88V112C120 115.314 117.314 118 114 118H86Z" fill="#FAF9F7"/>
+                <path d="M122 86C122 82.6863 124.686 80 128 80H152C155.314 80 158 82.6863 158 86V114C158 117.314 155.314 120 152 120H128C124.686 120 122 117.314 122 114V86Z" fill="white"/>
+                <path d="M166 118C162.686 118 160 115.314 160 112V88C160 84.6863 162.686 82 166 82H194C197.314 82 200 84.6863 200 88V112C200 115.314 197.314 118 194 118H166Z" fill="#FAF9F7"/>
+                <path d="M202 86C202 82.6863 204.686 80 208 80H232C235.314 80 238 82.6863 238 86V114C238 117.314 235.314 120 232 120H208C204.686 120 202 117.314 202 114V86Z" fill="white"/>
+                <path d="M246 118C242.686 118 240 115.314 240 112V88C240 84.6863 242.686 82 246 82H274C277.314 82 280 84.6863 280 88V112C280 115.314 277.314 118 274 118H246Z" fill="#FAF9F7"/>
+                <path d="M282 86C282 82.6863 284.686 80 288 80H312C315.314 80 318 82.6863 318 86V114C318 117.314 315.314 120 312 120H288C284.686 120 282 117.314 282 114V86Z" fill="white"/>
+                <path d="M2 126C2 122.686 4.68629 120 8 120H32C35.3137 120 38 122.686 38 126V154C38 157.314 35.3137 160 32 160H8C4.68629 160 2 157.314 2 154V126Z" fill="white"/>
+                <path d="M42 126C42 122.686 44.6863 120 48 120H72C75.3137 120 78 122.686 78 126V154C78 157.314 75.3137 160 72 160H48C44.6863 160 42 157.314 42 154V126Z" fill="white"/>
+                <path d="M86 158C82.6863 158 80 155.314 80 152V128C80 124.686 82.6863 122 86 122H114C117.314 122 120 124.686 120 128V152C120 155.314 117.314 158 114 158H86Z" fill="#FAF9F7"/>
+                <path d="M2 166C2 162.686 4.68629 160 8 160H32C35.3137 160 38 162.686 38 166V194C38 197.314 35.3137 200 32 200H8C4.68629 200 2 197.314 2 194V166Z" fill="white"/>
+                <path d="M202 126C202 122.686 204.686 120 208 120H232C235.314 120 238 122.686 238 126V154C238 157.314 235.314 160 232 160H208C204.686 160 202 157.314 202 154V126Z" fill="white"/>
+                <path d="M122 126C122 122.686 124.686 120 128 120H152C155.314 120 158 122.686 158 126V154C158 157.314 155.314 160 152 160H128C124.686 160 122 157.314 122 154V126Z" fill="white"/>
+                <path d="M242 126C242 122.686 244.686 120 248 120H272C275.314 120 278 122.686 278 126V154C278 157.314 275.314 160 272 160H248C244.686 160 242 157.314 242 154V126Z" fill="white"/>
+                <path d="M166 158C162.686 158 160 155.314 160 152V128C160 124.686 162.686 122 166 122H194C197.314 122 200 124.686 200 128V152C200 155.314 197.314 158 194 158H166Z" fill="#FAF9F7"/>
+                <path d="M162 166C162 162.686 164.686 160 168 160H192C195.314 160 198 162.686 198 166V194C198 197.314 195.314 200 192 200H168C164.686 200 162 197.314 162 194V166Z" fill="white"/>
+                <path d="M242 166C242 162.686 244.686 160 248 160H272C275.314 160 278 162.686 278 166V194C278 197.314 275.314 200 272 200H248C244.686 160 242 197.314 242 194V166Z" fill="white"/>
+                <path d="M122 166C122 162.686 124.686 160 128 160H152C155.314 160 158 162.686 158 166V194C158 197.314 155.314 200 152 200H128C124.686 160 122 197.314 122 194V166Z" fill="white"/>
+                <path d="M206 198C202.686 198 200 195.314 200 192V168C200 164.686 202.686 162 206 162H234C237.314 162 240 164.686 240 168V192C240 195.314 237.314 198 234 198H206Z" fill="#FAF9F7"/>
+                <path d="M286 158C282.686 158 280 155.314 280 152V128C280 124.686 282.686 122 286 122H314C317.314 122 320 124.686 320 128V152C320 155.314 317.314 158 314 158H286Z" fill="#FAF9F7"/>
+                <path d="M46 198C42.6863 198 40 195.314 40 192V168C40 164.686 42.6863 162 46 162H74C77.3137 162 80 164.686 80 168V192C80 195.314 77.3137 198 74 198H46Z" fill="#FAF9F7"/>
+                <path d="M82 166C82 162.686 84.6863 160 88 160H112C115.314 160 118 162.686 118 166V194C118 197.314 115.314 200 112 200H88C84.6863 200 82 197.314 82 194V166Z" fill="white"/>
+                <path d="M286 198C282.686 198 280 195.314 280 192V168C280 164.686 282.686 162 286 162H314C317.314 162 320 164.686 320 168V192C320 195.314 317.314 198 314 198H286Z" fill="#FAF9F7"/>
+              </g>
+              <clipPath id="clip0_33_2">
+                <rect width="320" height="200" fill="white"/>
+              </clipPath>
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#grid-pattern)"/>
+        </svg>
+      </div>
       <motion.div
         className="w-full max-w-[600px] mx-auto px-4"
         variants={scrollEnterVariants}
@@ -444,15 +504,32 @@ export default function InteropAddress() {
               </div>
             </div >
 
-            {/* Chain select pill */}
-            < div className="relative bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-2 h-full flex items-center gap-[7.6px] flex-shrink-0" >
+            {/* Chain select pill — animates when chain changes during autoplay */}
+            <div className="relative bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-2 h-full flex items-center gap-[7.6px] flex-shrink-0 min-w-[100px]">
+              <div className="relative flex items-center pr-4 flex-1 min-h-[23px]">
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.span
+                    key={chain.shortName}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.2, ease: EASE_OUT_QUINT }}
+                    className="absolute text-[16px] sm:text-[18px] font-bold text-[var(--color-quartz-900)]"
+                    style={{ fontFamily: 'ABC Monument Grotesk, sans-serif', fontFeatureSettings: "'ss01'" }}
+                  >
+                    {chain.shortName}
+                  </motion.span>
+                </AnimatePresence>
+              </div>
               <select
                 value={chain.shortName}
-                onChange={(e) =>
-                  setChain(CHAINS.find((c) => c.shortName === e.target.value)!)
-                }
-                className="bg-transparent text-[16px] sm:text-[18px] font-bold text-[var(--color-quartz-900)] outline-none cursor-pointer appearance-none pr-4"
+                onChange={(e) => {
+                  setIsPlaying(false);
+                  setChain(CHAINS.find((c) => c.shortName === e.target.value)!);
+                }}
+                className="absolute inset-0 w-full opacity-0 cursor-pointer appearance-none"
                 style={{ fontFamily: 'ABC Monument Grotesk, sans-serif', fontFeatureSettings: "'ss01'" }}
+                aria-label="Select network"
               >
                 {CHAINS.map((c) => (
                   <option key={c.chainId} value={c.shortName}>
@@ -463,7 +540,7 @@ export default function InteropAddress() {
               <svg className="absolute right-2 top-1/2 pointer-events-none" style={{ width: '8px', height: '5px', transform: 'translateY(-50%)', fill: 'currentColor' }} viewBox="0 0 8 5">
                 <path d="M4 5L0 0h8L4 5z" />
               </svg>
-            </div >
+            </div>
 
             {/* Calculate button */}
             < motion.button
