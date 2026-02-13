@@ -435,7 +435,7 @@ export default function InteropAddress() {
         viewport={{ once: true, amount: 0.2, margin: "-80px" }}
       >
         {/* Header */}
-        <motion.div className="mb-6 text-center" variants={scrollEnterItemVariants}>
+        <motion.div className="mb-6  text-left w-fit mx-auto flex flex-col gap-0" variants={scrollEnterItemVariants}>
           <span className="inline-block mb-2 text-[12px] font-medium tracking-[0.48px] uppercase text-[var(--color-quartz-900)]" style={{ fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace', fontFeatureSettings: "'ss01'" }}>
             ERC-7930 &amp; ERC-7828
           </span>
@@ -451,7 +451,7 @@ export default function InteropAddress() {
               onClick={togglePlayPause}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              className="flex items-center justify-center shrink-0 w-[31px] h-[31px] rounded-[3px]"
+              className="flex items-center justify-center shrink-0 aspect-square p-1.5 rounded-[3px]"
               style={{ backgroundColor: `var(--color-${colorTheme}-100)` }}
             >
               {isPlaying ? <IconPause size={16} style={{ color: `var(--color-${colorTheme}-500)` }} /> : <IconPlay size={16} style={{ color: `var(--color-${colorTheme}-500)` }} />}
@@ -514,8 +514,8 @@ export default function InteropAddress() {
             </div>
 
             {/* Chain select pill — animates when chain changes during autoplay */}
-            <div className="relative bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-2 h-full flex items-center gap-[7.6px] flex-shrink-0 min-w-[100px]">
-              <div className="relative flex items-center pr-4 flex-1 min-h-[23px]">
+            <div className="relative bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-1.5  h-full flex items-center gap-[7.6px] flex-shrink-0 min-w-[100px]">
+              <div className="relative flex items-center pr-4  flex-1 min-h-[23px]">
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.span
                     key={chain.shortName}
@@ -523,7 +523,7 @@ export default function InteropAddress() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -4 }}
                     transition={{ duration: AC.FAST, ease: AC.EASE }}
-                    className="absolute text-[16px] sm:text-[18px] font-bold text-[var(--color-quartz-900)]"
+                    className="  text-[16px] sm:text-[18px] font-bold text-[var(--color-quartz-900)]"
                     style={{ fontFamily: 'ABC Monument Grotesk, sans-serif', fontFeatureSettings: "'ss01'" }}
                   >
                     {chain.shortName}
@@ -724,14 +724,15 @@ function OutputRow({
     seed: 0,
   });
 
-  // Replay animation when value changes; hide copy icon until type-out finishes
+  // Replay scramble when value/truncated change; omit replay fns so effect doesn't run every render
   useEffect(() => {
     setTextRevealed(false);
     replayMain();
     if (truncated) {
       replayFull();
     }
-  }, [value, truncated, replayMain, replayFull]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only replay on data change
+  }, [value, truncated]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(value);
