@@ -1,15 +1,18 @@
 /**
  * InteropAddress — ERC-7930/7828 ENS resolution demo.
  * - Play/pause cycles ENS names (vitalik.eth → nick.eth → validator.eth → jamesbeck.eth)
- *   and networks (Ethereum → Arbitrum → Base → Optimism → Polygon) in sync.
+ *   and chain types (eip155, solana, bip122) with representative chains in sync.
+ * - Chain identifier format cycles: human-readable ↔ CAIP during autoplay.
  * - Scroll-in-view orchestrated enter animation (header → input → output)
- * - Chain pill animates (opacity/y) when network changes during autoplay.
+ * - Chain pill animates (opacity/y) when chain changes during autoplay.
  */
 import { useState, useCallback, useRef, useEffect } from "react";
 import { motion, AnimatePresence, type Variants } from "motion/react";
 import { useScramble } from "use-scramble";
 
 // --- Chain data -----------------------------------------------------------
+// Includes eip155 (EVM), solana, and bip122 (Bitcoin) chain types for interoperable address demo.
+// ENS resolves to Ethereum addresses; non-EVM chains show the format for cross-chain interoperability.
 
 interface Chain {
   name: string;
@@ -19,26 +22,12 @@ interface Chain {
 }
 
 const CHAINS: Chain[] = [
+  // eip155 (EVM)
   { name: "Ethereum", shortName: "ethereum", chainId: 1, caipId: "eip155:1" },
-  {
-    name: "Arbitrum One",
-    shortName: "arbitrum",
-    chainId: 42161,
-    caipId: "eip155:42161",
-  },
+  { name: "Arbitrum One", shortName: "arbitrum", chainId: 42161, caipId: "eip155:42161" },
   { name: "Base", shortName: "base", chainId: 8453, caipId: "eip155:8453" },
-  {
-    name: "Optimism",
-    shortName: "optimism",
-    chainId: 10,
-    caipId: "eip155:10",
-  },
-  {
-    name: "Polygon",
-    shortName: "polygon",
-    chainId: 137,
-    caipId: "eip155:137",
-  },
+  { name: "Optimism", shortName: "optimism", chainId: 10, caipId: "eip155:10" },
+  { name: "Polygon", shortName: "polygon", chainId: 137, caipId: "eip155:137" },
 ];
 
 // --- Preset examples ------------------------------------------------------
@@ -215,6 +204,8 @@ export default function InteropAddress() {
   const [colorTheme] = useState<ColorTheme>(getRandomColor);
   const [isPlaying, setIsPlaying] = useState(false);
   const [cycleIndex, setCycleIndex] = useState(0);
+  /** During autoplay, cycles between human-readable (shortName) and CAIP (caipId) chain identifier format. */
+  const [chainIdFormat, setChainIdFormat] = useState<"short" | "caip">("short");
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined
@@ -308,7 +299,10 @@ export default function InteropAddress() {
   };
 
   const togglePlayPause = useCallback(() => {
-    setIsPlaying((prev) => !prev);
+    setIsPlaying((prev) => {
+      if (prev) setChainIdFormat("short"); // reset to friendly format when pausing
+      return !prev;
+    });
   }, []);
 
   // Handle play/pause cycling — type each name and advance network in sync
@@ -316,6 +310,7 @@ export default function InteropAddress() {
     if (isPlaying) {
       chainCycleRef.current = 0;
       setChain(CHAINS[0]);
+      setChainIdFormat("short");
       const currentName = CYCLE_EXAMPLES[cycleIndex];
       typeInName(currentName);
 
@@ -327,6 +322,7 @@ export default function InteropAddress() {
         });
         chainCycleRef.current = (chainCycleRef.current + 1) % CHAINS.length;
         setChain(CHAINS[chainCycleRef.current]);
+        setChainIdFormat((f) => (f === "short" ? "caip" : "short"));
       }, 3500);
     } else {
       clearInterval(cycleIntervalRef.current);
@@ -347,9 +343,14 @@ export default function InteropAddress() {
     };
   }, []);
 
+  const chainIdentifier = chainIdFormat === "short" ? chain.shortName : chain.caipId;
+  const chainPillDisplay =
+    chainIdentifier.length > 24
+      ? `${chainIdentifier.slice(0, chainIdentifier.indexOf(":") + 7)}…${chainIdentifier.slice(-4)}`
+      : chainIdentifier;
   const interopName =
     input.trim() && state.status === "resolved"
-      ? `${input.trim()}@${chain.shortName}`
+      ? `${input.trim()}@${chainIdentifier}`
       : null;
 
   // Archive the result when successfully resolved, clear on errors
@@ -424,7 +425,7 @@ export default function InteropAddress() {
               </clipPath>
             </pattern>
           </defs>
-          <rect width="100%" height="100%" fill="url(#grid-pattern)" />
+          <rect width="100%" height="100%" fill="url(#tiny-grid-pattern)" />
         </svg>
       </motion.div>
       <motion.div
@@ -513,20 +514,20 @@ export default function InteropAddress() {
               </div>
             </div>
 
-            {/* Chain select pill — animates when chain changes during autoplay */}
-            <div className="relative bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-1.5  h-full flex items-center gap-[7.6px] flex-shrink-0 min-w-[100px]">
-              <div className="relative flex items-center pr-4  flex-1 min-h-[23px]">
+            {/* Chain select pill — animates when chain or format changes during autoplay */}
+            <div className="relative bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-1.5 h-full flex items-center gap-[7.6px] shrink-0 min-w-[100px] overflow-visible">
+              <div className={`relative flex items-center pr-4 flex-1 min-h-[23px] overflow-visible ${isPlaying ? "z-10" : ""}`}>
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.span
-                    key={chain.shortName}
-                    initial={{ opacity: 0, y: 4 }}
+                    key={`${chain.shortName}-${chainIdFormat}`}
+                    initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: AC.FAST, ease: AC.EASE }}
-                    className="  text-[16px] sm:text-[18px] font-bold text-[var(--color-quartz-900)]"
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: AC.NORMAL, ease: AC.EASE }}
+                    className="absolute inset-y-0 left-0 flex items-center text-[16px] sm:text-[18px] font-bold text-[var(--color-quartz-900)]"
                     style={{ fontFamily: 'ABC Monument Grotesk, sans-serif', fontFeatureSettings: "'ss01'" }}
                   >
-                    {chain.shortName}
+                    {chainPillDisplay}
                   </motion.span>
                 </AnimatePresence>
               </div>
@@ -534,14 +535,15 @@ export default function InteropAddress() {
                 value={chain.shortName}
                 onChange={(e) => {
                   setIsPlaying(false);
+                  setChainIdFormat("short");
                   setChain(CHAINS.find((c) => c.shortName === e.target.value)!);
                 }}
-                className="absolute inset-0 w-full opacity-0 cursor-pointer appearance-none"
+                className={`absolute inset-0 w-full opacity-0 cursor-pointer appearance-none ${isPlaying ? "pointer-events-none" : ""}`}
                 style={{ fontFamily: 'ABC Monument Grotesk, sans-serif', fontFeatureSettings: "'ss01'" }}
                 aria-label="Select network"
               >
                 {CHAINS.map((c) => (
-                  <option key={c.chainId} value={c.shortName}>
+                  <option key={c.caipId} value={c.shortName}>
                     {c.shortName}
                   </option>
                 ))}
@@ -574,7 +576,7 @@ export default function InteropAddress() {
             <AnimatePresence mode="wait">
               {(state.status === "resolved" && interopName) || archivedResult ? (
                 <motion.div
-                  key={(state.status === "resolved" ? state.address : archivedResult?.address ?? "") + chain.chainId}
+                  key={(state.status === "resolved" ? state.address : archivedResult?.address ?? "") + chain.caipId}
                   variants={resultVariants}
                   initial="hidden"
                   animate="visible"

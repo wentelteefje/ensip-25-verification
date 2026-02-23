@@ -42,3 +42,72 @@ body {
   --color-azure-100: #e1f5fe;
   --color-azure-500: #0082bb;
 }
+
+/* Diagram builder: Figma 1153:571 — graph paper, blue/brown nodes, dotted borders, corner dots */
+.diagram-canvas {
+  --diagram-paper: #e8ecf0;
+  --diagram-grid: #b0c4d8;
+  --diagram-ink: #1e3a52;
+  --diagram-fill: #a8c0d8;
+  --diagram-node-bg: #b8cce0;
+  --diagram-corner-blue: #5a8ab0;
+  --diagram-node-bg-brown: #d4c4a8;
+  --diagram-ink-brown: #6b5a45;
+  --diagram-corner-brown: #9a8568;
+  --diagram-node-radius: 12px;
+  --diagram-font-main: 0.9375rem;
+  --diagram-font-sub: 0.75rem;
+}
+.diagram-node-dotted {
+  border-style: dotted;
+}
+.diagram-noise-overlay {
+  opacity: 0.22;
+  mix-blend-mode: multiply;
+}
+.diagram-flow .react-flow__edge-path {
+  stroke: var(--diagram-ink);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 6 4;
+}
+.diagram-flow .react-flow__edge .react-flow__edge-label {
+  font-family: ui-monospace, monospace;
+  font-weight: 600;
+  font-size: var(--diagram-font-sub);
+  fill: var(--diagram-ink);
+}
+.diagram-flow .react-flow__edge .react-flow__edge-label-bg {
+  stroke: var(--diagram-ink);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 2;
+  rx: 8;
+  ry: 8;
+}
+.diagram-flow .react-flow__controls button {
+  border-color: var(--diagram-ink);
+  color: var(--diagram-ink);
+  background: var(--diagram-node-bg);
+  border-radius: var(--diagram-node-radius);
+}
+.diagram-flow .react-flow__controls button:hover {
+  background: var(--diagram-paper);
+}
+.diagram-flow .react-flow__minimap {
+  background: var(--diagram-node-bg);
+  border: 2px solid var(--diagram-ink);
+  border-radius: var(--diagram-node-radius);
+}
+/* Node base: rounded corners, type hierarchy, sketch outline */
+.diagram-root,
+.diagram-action,
+.diagram-registry,
+.diagram-gateway {
+  border-radius: var(--diagram-node-radius);
+  font-family: ui-monospace, monospace;
+}
+.diagram-group {
+  border-style: dotted;
+  border-width: 2px;
+}
