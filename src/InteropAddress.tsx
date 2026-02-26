@@ -1,41 +1,134 @@
 /**
- * InteropAddress — ERC-7930/7828 ENS resolution demo.
- * - Play/pause cycles ENS names (vitalik.eth → nick.eth → validator.eth → jamesbeck.eth)
- *   and chain types (eip155, solana, bip122) with representative chains in sync.
- * - Chain identifier format cycles: human-readable ↔ CAIP during autoplay.
- * - Scroll-in-view orchestrated enter animation (header → input → output)
- * - Chain pill animates (opacity/y) when chain changes during autoplay.
+ * InteropAddress — Agent Registry Attestation lookup tool.
+ * Looks up ENS text records to verify whether an ENS name owner attests
+ * to an AI agent registered in an ERC-8004 agent registry.
  */
 import { useState, useCallback, useRef, useEffect } from "react";
 import { motion, AnimatePresence, type Variants } from "motion/react";
 import { useScramble } from "use-scramble";
+import { createPublicClient, http, namehash, type Chain, type PublicClient } from "viem";
+import { normalize } from "viem/ens";
+import { mainnet, sepolia, base, baseSepolia } from "viem/chains";
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from "wagmi";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 
-// --- Chain data -----------------------------------------------------------
-// Includes eip155 (EVM), solana, and bip122 (Bitcoin) chain types for interoperable address demo.
-// ENS resolves to Ethereum addresses; non-EVM chains show the format for cross-chain interoperability.
+import {
+  buildTextRecordKey,
+  parseAgentFileUri,
+  extractEnsEndpoint,
+  checkAgentFile,
+  type AgentFileResult,
+} from "./lib/attestation.ts";
 
-interface Chain {
-  name: string;
-  shortName: string;
-  chainId: number;
-  caipId: string;
+// --- viem clients ----------------------------------------------------------
+
+// Map any chain to the ENS-capable chain it belongs to.
+// Mainnets (1, 8453) → Ethereum mainnet; testnets (11155111, 84532) → Sepolia.
+const TESTNET_CHAIN_IDS = new Set([11155111, 84532]);
+
+function getEnsClient(registryChainId?: number): PublicClient {
+  const ensChainId = registryChainId && TESTNET_CHAIN_IDS.has(registryChainId) ? 11155111 : 1;
+  return getClient(ensChainId);
 }
 
-const CHAINS: Chain[] = [
-  // eip155 (EVM)
-  { name: "Ethereum", shortName: "ethereum", chainId: 1, caipId: "eip155:1" },
-  { name: "Arbitrum One", shortName: "arbitrum", chainId: 42161, caipId: "eip155:42161" },
-  { name: "Base", shortName: "base", chainId: 8453, caipId: "eip155:8453" },
-  { name: "Optimism", shortName: "optimism", chainId: 10, caipId: "eip155:10" },
-  { name: "Polygon", shortName: "polygon", chainId: 137, caipId: "eip155:137" },
+const chainConfigs: Record<number, { chain: Chain; rpc: string }> = {
+  1: { chain: mainnet, rpc: "https://eth.drpc.org" },
+  11155111: { chain: sepolia, rpc: "https://sepolia.drpc.org" },
+  8453: { chain: base, rpc: "https://base.drpc.org" },
+  84532: { chain: baseSepolia, rpc: "https://base-sepolia.drpc.org" },
+};
+
+const clientCache = new Map<number, PublicClient>();
+
+function getClient(chainId: number): PublicClient {
+  let c = clientCache.get(chainId);
+  if (c) return c;
+  const cfg = chainConfigs[chainId];
+  if (!cfg) throw new Error(`Unsupported chainId: ${String(chainId)}`);
+  c = createPublicClient({ chain: cfg.chain, transport: http(cfg.rpc) });
+  clientCache.set(chainId, c);
+  return c;
+}
+
+// --- Registry data ---------------------------------------------------------
+
+interface Registry {
+  label: string;
+  value: string;
+  contractAddress: `0x${string}`;
+  chainId: number;
+}
+
+const REGISTRIES: Registry[] = [
+  {
+    label: "8004 @ Ethereum Mainnet",
+    value: "0x000100000101148004a169fb4a3325136eb29fa0ceb6d2e539a432",
+    contractAddress: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+    chainId: 1,
+  },
+  {
+    label: "8004 @ Ethereum Sepolia",
+    value: "0x0001000003aa36a7148004a818bfb912233c491871b3d84c89a494bd9e",
+    contractAddress: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    chainId: 11155111,
+  },
+  {
+    label: "8004 @ Base Mainnet",
+    value: "0x00010000022105148004a169fb4a3325136eb29fa0ceb6d2e539a432",
+    contractAddress: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+    chainId: 8453,
+  },
+  {
+    label: "8004 @ Base Sepolia",
+    value: "0x0001000003014a34148004a818bfb912233c491871b3d84c89a494bd9e",
+    contractAddress: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    chainId: 84532,
+  },
 ];
 
-// --- Preset examples ------------------------------------------------------
+// --- ABI fragments ---------------------------------------------------------
 
-const CYCLE_EXAMPLES = ["vitalik.eth", "nick.eth", "validator.eth", "jamesbeck.eth"];
+const agentRegistryAbi = [
+  {
+    name: "tokenURI",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "string" }],
+  },
+] as const;
+
+const resolverAbi = [
+  {
+    name: "setText",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "node", type: "bytes32" },
+      { name: "key", type: "string" },
+      { name: "value", type: "string" },
+    ],
+    outputs: [],
+  },
+] as const;
+
+// ENS registry contracts per chain for resolver lookups
+const ensRegistryAbi = [
+  {
+    name: "resolver",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "node", type: "bytes32" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+] as const;
+
+const ENS_REGISTRY: Record<number, `0x${string}`> = {
+  1: "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e",
+  11155111: "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e",
+};
 
 // --- Animation config -----------------------------------------------------
-// Centralized timing/easing for consistent motion. Use AC in variants instead of inline values.
 
 const AC = {
   FAST: 0.2,
@@ -78,7 +171,7 @@ const buttonVariants: Variants = {
   },
 };
 
-/* Inline SVG icons — no external font; reliable when embedded. Replace paths with Figma export if needed. */
+/* Inline SVG icons */
 const ICON_SIZE = 24;
 type IconProps = { size?: number; className?: string; style?: React.CSSProperties };
 
@@ -86,20 +179,6 @@ function IconPlay({ size = ICON_SIZE, className = "", style }: IconProps) {
   return (
     <svg className={className} style={style} width={size} height={size} viewBox="0 0 11 14" fill="currentColor" aria-hidden>
       <path d="M0 14V0L11 7L0 14ZM2 10.35L7.25 7L2 3.65V10.35Z" />
-    </svg>
-  );
-}
-function IconPause({ size = ICON_SIZE, className = "", style }: IconProps) {
-  return (
-    <svg className={className} style={style} width={size} height={size} viewBox="0 0 14 14" fill="currentColor" aria-hidden>
-      <path d="M8 14V0H14V14H8ZM0 14V0H6V14H0ZM10 12H12V2H10V12ZM2 12H4V2H2V12Z" />
-    </svg>
-  );
-}
-function IconCalculate({ size = ICON_SIZE, className = "", style }: IconProps) {
-  return (
-    <svg className={className} style={style} width={size} height={size} viewBox="0 0 18 18" fill="currentColor" aria-hidden>
-      <path d="M5 15H6.5V13H8.5V11.5H6.5V9.5H5V11.5H3V13H5V15ZM10 14.25H15V12.75H10V14.25ZM10 11.75H15V10.25H10V11.75ZM11.1 7.95L12.5 6.55L13.9 7.95L14.95 6.9L13.55 5.45L14.95 4.05L13.9 3L12.5 4.4L11.1 3L10.05 4.05L11.45 5.45L10.05 6.9L11.1 7.95ZM3.25 6.2H8.25V4.7H3.25V6.2ZM2 18C1.45 18 0.975 17.8083 0.575 17.425C0.191667 17.025 0 16.55 0 16V2C0 1.45 0.191667 0.983333 0.575 0.599999C0.975 0.199999 1.45 0 2 0H16C16.55 0 17.0167 0.199999 17.4 0.599999C17.8 0.983333 18 1.45 18 2V16C18 16.55 17.8 17.025 17.4 17.425C17.0167 17.8083 16.55 18 16 18H2ZM2 16H16V2H2V16Z" />
     </svg>
   );
 }
@@ -153,32 +232,9 @@ const scrollEnterItemVariants: Variants = {
 type ResolveState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "resolved"; address: string }
-  | { status: "not-found" }
-  | { status: "invalid-tld" }
+  | { status: "resolved"; textRecordKey: string; textRecordValue: string; registryAddress: string; agentFileResult?: AgentFileResult; ensAvatar?: string }
+  | { status: "no-attestation"; textRecordKey: string; registryAddress: string; agentFileResult?: AgentFileResult; ensAvatar?: string }
   | { status: "error"; message: string };
-
-async function resolveENS(
-  name: string,
-  signal: AbortSignal
-): Promise<string | null> {
-  const res = await fetch(`https://ensdata.net/${name}`, { signal });
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data.address ?? null;
-}
-
-const isHexAddress = (v: string) => /^0x[0-9a-fA-F]{40}$/.test(v);
-
-const VALID_TLDS = ['.eth'];
-
-const hasValidTLD = (v: string): boolean => {
-  if (isHexAddress(v)) return true;
-  // Must have a valid TLD (.eth)
-  return VALID_TLDS.some(tld => v.endsWith(tld));
-};
-
-const truncate = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
 // --- Color palette --------------------------------------------------------
 
@@ -193,56 +249,158 @@ function getRandomColor(): ColorTheme {
 // --- Component ------------------------------------------------------------
 
 export default function InteropAddress() {
-  const [input, setInput] = useState("");
-  const [chain, setChain] = useState<Chain>(CHAINS[0]);
+  const [ensName, setEnsName] = useState("ens-registration-agent.ses.eth");
+  const [agentId, setAgentId] = useState("26433");
+  const [registry, setRegistry] = useState<Registry>(REGISTRIES[0]);
   const [state, setState] = useState<ResolveState>({ status: "idle" });
-  const [archivedResult, setArchivedResult] = useState<{
-    address: string;
-    interopName: string;
-    chainCaipId: string;
-  } | null>(null);
   const [colorTheme] = useState<ColorTheme>(getRandomColor);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [cycleIndex, setCycleIndex] = useState(0);
-  /** During autoplay, cycles between human-readable (shortName) and CAIP (caipId) chain identifier format. */
-  const [chainIdFormat, setChainIdFormat] = useState<"short" | "caip">("short");
   const abortRef = useRef<AbortController | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined
-  );
-  const cycleIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(
-    undefined
-  );
-  const chainCycleRef = useRef(0);
-  const typeTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined
-  );
 
-  const resolve = useCallback(async (value: string) => {
+  // Wallet state for setText
+  const { isConnected, chainId: walletChainId } = useAccount();
+  const { writeContract, data: txHash, isPending: isTxPending, reset: resetTx } = useWriteContract();
+  const { isLoading: isTxConfirming, isSuccess: isTxConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
+  const { switchChain } = useSwitchChain();
+
+  // The ENS chain writes must target (mainnet or Sepolia, derived from registry)
+  const requiredEnsChainId = TESTNET_CHAIN_IDS.has(registry.chainId) ? 11155111 : 1;
+  const isWrongChain = isConnected && walletChainId !== requiredEnsChainId;
+
+  // Auto re-resolve after tx confirmation
+  const resolveRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (isTxConfirmed && resolveRef.current) {
+      const timer = setTimeout(() => {
+        resolveRef.current?.();
+        resetTx();
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [isTxConfirmed, resetTx]);
+
+  // Intro scramble: empty → placeholder labels → default values
+  const [introText, setIntroText] = useState<{ ens: string; agent: string }>({ ens: "", agent: "" });
+  const [introPhase, setIntroPhase] = useState<"empty" | "placeholder" | "default" | "done">("empty");
+
+  const { ref: introEnsRef } = useScramble({
+    text: introText.ens,
+    speed: 0.6,
+    tick: 1,
+    step: 1,
+    scramble: 4,
+    seed: 0,
+    onAnimationEnd: () => {
+      if (introPhase === "default") setIntroPhase("done");
+    },
+  });
+
+  const { ref: introAgentRef } = useScramble({
+    text: introText.agent,
+    speed: 0.6,
+    tick: 1,
+    step: 1,
+    scramble: 4,
+    seed: 0,
+  });
+
+  useEffect(() => {
+    // Phase 1: scramble in placeholder labels
+    const t1 = setTimeout(() => {
+      setIntroText({ ens: "name.eth", agent: "agent ID" });
+      setIntroPhase("placeholder");
+    }, 400);
+    // Phase 2: scramble to real defaults
+    const t2 = setTimeout(() => {
+      setIntroText({ ens: ensName, agent: agentId });
+      setIntroPhase("default");
+    }, 1600);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only run on mount
+  }, []);
+
+  const resolveAttestation = useCallback(async () => {
     abortRef.current?.abort();
-
-    // Check for valid TLD
-    if (!hasValidTLD(value)) {
-      setState({ status: "invalid-tld" });
-      return;
-    }
-
-    if (isHexAddress(value)) {
-      setState({ status: "resolved", address: value });
-      return;
-    }
-
     const controller = new AbortController();
     abortRef.current = controller;
+
+    const trimmedName = ensName.trim();
+    const trimmedAgentId = agentId.trim();
+
+    if (!trimmedName || !trimmedAgentId) {
+      setState({ status: "error", message: "ENS name and Agent ID are required." });
+      return;
+    }
+
+    const textRecordKey = buildTextRecordKey(registry.value, trimmedAgentId);
     setState({ status: "loading" });
 
     try {
-      const address = await resolveENS(value, controller.signal);
+      const normalized = normalize(trimmedName);
+      const ensClient = getEnsClient(registry.chainId);
+      const result = await ensClient.getEnsText({
+        name: normalized,
+        key: textRecordKey,
+      });
+
       if (controller.signal.aborted) return;
-      if (address) {
-        setState({ status: "resolved", address });
+
+      // Run agent file check and avatar fetch in parallel — neither blocks resolution
+      const agentFilePromise = (async (): Promise<AgentFileResult | undefined> => {
+        try {
+          const registryClient = getClient(registry.chainId);
+          const uri = await registryClient.readContract({
+            address: registry.contractAddress,
+            abi: agentRegistryAbi,
+            functionName: "tokenURI",
+            args: [BigInt(trimmedAgentId)],
+          });
+
+          if (controller.signal.aborted) return undefined;
+
+          if (!uri) {
+            return { type: "error", message: "No agent URI returned" };
+          }
+
+          const jsonText = await parseAgentFileUri(uri, controller.signal);
+
+          if (controller.signal.aborted) return undefined;
+
+          const endpoint = extractEnsEndpoint(jsonText);
+          if (endpoint === null && jsonText.trimStart().startsWith("{")) {
+            return { type: "not-set" };
+          } else if (endpoint === null) {
+            throw new Error("Agent file is not valid JSON");
+          } else {
+            return checkAgentFile(endpoint, trimmedName);
+          }
+        } catch (err) {
+          if (controller.signal.aborted) return undefined;
+          let msg = "Agent file check failed";
+          if (err instanceof Error) {
+            if (err.message.includes("reverted")) {
+              msg = "Agent not found in registry";
+            } else if (err.message.includes("not valid JSON")) {
+              msg = err.message;
+            } else if (err.message.includes("fetch failed")) {
+              msg = err.message;
+            }
+          }
+          return { type: "error", message: msg };
+        }
+      })();
+
+      const avatarPromise = ensClient
+        .getEnsAvatar({ name: normalized })
+        .catch(() => undefined);
+
+      const [agentFileResult, ensAvatar] = await Promise.all([agentFilePromise, avatarPromise]);
+
+      if (controller.signal.aborted) return;
+
+      if (result) {
+        setState({ status: "resolved", textRecordKey, textRecordValue: result, registryAddress: registry.value, agentFileResult, ensAvatar: ensAvatar ?? undefined });
       } else {
-        setState({ status: "not-found" });
+        setState({ status: "no-attestation", textRecordKey, registryAddress: registry.value, agentFileResult, ensAvatar: ensAvatar ?? undefined });
       }
     } catch (e) {
       if (controller.signal.aborted) return;
@@ -251,125 +409,53 @@ export default function InteropAddress() {
         message: e instanceof Error ? e.message : "Resolution failed",
       });
     }
+  }, [ensName, agentId, registry]);
+
+  // Keep resolveRef in sync
+  resolveRef.current = resolveAttestation;
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
   }, []);
 
-  const TYPE_CHAR_MS = 80;
+  // --- setText handler ---
+  const handleWriteAttestation = async (value: string) => {
+    const trimmedName = ensName.trim();
+    if (!trimmedName || !walletChainId) return;
 
-  /** Types `name` into input character by character, then resolves. Clears any in-flight type timeout. */
-  const typeInName = useCallback(
-    (name: string) => {
-      clearTimeout(typeTimeoutRef.current);
-      setInput("");
-      clearTimeout(debounceRef.current);
-      let i = 0;
-      const run = () => {
-        if (i <= name.length) {
-          setInput(name.slice(0, i));
-          if (i === name.length) {
-            resolve(name);
-          } else {
-            typeTimeoutRef.current = setTimeout(run, TYPE_CHAR_MS);
-            i++;
-          }
-        }
-      };
-      run();
-    },
-    [resolve]
-  );
+    const textRecordKey = (state.status === "resolved" || state.status === "no-attestation")
+      ? state.textRecordKey
+      : buildTextRecordKey(registry.value, agentId.trim());
 
-  const handleInputChange = (value: string) => {
-    setInput(value);
-    clearTimeout(debounceRef.current);
-    clearTimeout(typeTimeoutRef.current);
-    setIsPlaying(false);
+    const node = namehash(normalize(trimmedName));
 
-    if (!value.trim()) {
-      abortRef.current?.abort();
-      // Keep previous resolved state instead of clearing
-      if (state.status !== "resolved") {
-        setState({ status: "idle" });
-      }
-      return;
-    }
+    // Look up the resolver for this name on the connected chain
+    const registryAddr = ENS_REGISTRY[walletChainId];
+    if (!registryAddr) return;
 
-    if (isHexAddress(value.trim()) || value.includes(".")) {
-      debounceRef.current = setTimeout(() => resolve(value.trim()), 400);
-    }
-  };
-
-  const togglePlayPause = useCallback(() => {
-    setIsPlaying((prev) => {
-      if (prev) setChainIdFormat("short"); // reset to friendly format when pausing
-      return !prev;
+    const client = getClient(walletChainId);
+    const resolverAddr = await client.readContract({
+      address: registryAddr,
+      abi: ensRegistryAbi,
+      functionName: "resolver",
+      args: [node],
     });
-  }, []);
 
-  // Handle play/pause cycling — type each name and advance network in sync
-  useEffect(() => {
-    if (isPlaying) {
-      chainCycleRef.current = 0;
-      setChain(CHAINS[0]);
-      setChainIdFormat("short");
-      const currentName = CYCLE_EXAMPLES[cycleIndex];
-      typeInName(currentName);
+    if (!resolverAddr || resolverAddr === "0x0000000000000000000000000000000000000000") return;
 
-      cycleIntervalRef.current = setInterval(() => {
-        setCycleIndex((prev) => {
-          const nextIndex = (prev + 1) % CYCLE_EXAMPLES.length;
-          typeInName(CYCLE_EXAMPLES[nextIndex]);
-          return nextIndex;
-        });
-        chainCycleRef.current = (chainCycleRef.current + 1) % CHAINS.length;
-        setChain(CHAINS[chainCycleRef.current]);
-        setChainIdFormat((f) => (f === "short" ? "caip" : "short"));
-      }, 3500);
-    } else {
-      clearInterval(cycleIntervalRef.current);
-    }
-
-    return () => {
-      clearInterval(cycleIntervalRef.current);
-      clearTimeout(typeTimeoutRef.current);
-    };
-  }, [isPlaying, cycleIndex, typeInName]);
-
-  useEffect(() => {
-    return () => {
-      clearTimeout(debounceRef.current);
-      clearTimeout(typeTimeoutRef.current);
-      abortRef.current?.abort();
-      clearInterval(cycleIntervalRef.current);
-    };
-  }, []);
-
-  const chainIdentifier = chainIdFormat === "short" ? chain.shortName : chain.caipId;
-  const chainPillDisplay =
-    chainIdentifier.length > 24
-      ? `${chainIdentifier.slice(0, chainIdentifier.indexOf(":") + 7)}…${chainIdentifier.slice(-4)}`
-      : chainIdentifier;
-  const interopName =
-    input.trim() && state.status === "resolved"
-      ? `${input.trim()}@${chainIdentifier}`
-      : null;
-
-  // Archive the result when successfully resolved, clear on errors
-  useEffect(() => {
-    if (state.status === "resolved" && interopName) {
-      setArchivedResult({
-        address: state.address,
-        interopName: interopName,
-        chainCaipId: chain.caipId,
-      });
-    } else if (state.status === "not-found" || state.status === "error" || state.status === "invalid-tld") {
-      // Clear archived result when we get an error or not-found
-      setArchivedResult(null);
-    }
-  }, [state.status, state.status === "resolved" ? state.address : undefined, interopName, chain.caipId]);
+    writeContract({
+      address: resolverAddr,
+      abi: resolverAbi,
+      functionName: "setText",
+      args: [node, textRecordKey, value],
+    });
+  };
 
   return (
     <div className="w-full min-h-screen bg-[var(--color-quartz-0)] antialiased flex items-center justify-center relative overflow-hidden">
-      {/* Background pattern — subtle opacity pulse so it feels alive */}
+      {/* Background pattern */}
       <motion.div
         className="absolute inset-0 flex items-center justify-center"
         animate={{ opacity: [0.35, 0.45, 0.35] }}
@@ -393,7 +479,7 @@ export default function InteropAddress() {
                 <path d="M126 78C122.686 78 120 75.3137 120 72V48C120 44.6863 122.686 42 126 42H154C157.314 42 160 44.6863 160 48V72C160 75.3137 157.314 78 154 78H126Z" fill="#FAF9F7" />
                 <path d="M162 46C162 42.6863 164.686 40 168 40H192C195.314 40 198 42.6863 198 46V74C198 77.3137 195.314 80 192 80H168C164.686 80 162 77.3137 162 74V46Z" fill="white" />
                 <path d="M202 46C202 42.6863 204.686 40 208 40H232C235.314 40 238 42.6863 238 46V74C238 77.3137 235.314 80 232 80H208C204.686 80 202 77.3137 202 74V46Z" fill="white" />
-                <path d="M246 78C242.686 78 240 75.3137 240 72V48C240 44.6863 242.686 42 246 42H274C277.314 42 280 44.6863 280 48V72C280 75.3137 277.314 78 274 78H246Z" fill="#FAF9F7" />
+                <path d="M246 78C242.686 78 240 75.3137 240 72V48C240 44.6863 242.686 42 246 42H274C277.3137 42 280 44.6863 280 48V72C280 75.3137 277.314 78 274 78H246Z" fill="#FAF9F7" />
                 <path d="M282 46C282 42.6863 284.686 40 288 40H312C315.314 40 318 42.6863 318 46V74C318 77.3137 315.314 80 312 80H288C284.686 80 282 77.3137 282 74V46Z" fill="white" />
                 <path d="M6 118C2.68629 118 0 115.314 0 112L0 88C0 84.6863 2.68629 82 6 82H34C37.3137 82 40 84.6863 40 88V112C40 115.314 37.3137 118 34 118H6Z" fill="#FAF9F7" />
                 <path d="M42 86C42 82.6863 44.6863 80 48 80H72C75.3137 80 78 82.6863 78 86V114C78 117.314 75.3137 120 72 120H48C44.6863 120 42 117.314 42 114V86Z" fill="white" />
@@ -436,75 +522,118 @@ export default function InteropAddress() {
         viewport={{ once: true, amount: 0.2, margin: "-80px" }}
       >
         {/* Header */}
-        <motion.div className="mb-6  text-left w-fit mx-auto flex flex-col gap-0" variants={scrollEnterItemVariants}>
+        <motion.div className="mb-6 text-left w-fit mx-auto flex flex-col gap-0" variants={scrollEnterItemVariants}>
           <span className="inline-block mb-2 text-[12px] font-medium tracking-[0.48px] uppercase text-[var(--color-quartz-900)]" style={{ fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace', fontFeatureSettings: "'ss01'" }}>
-            ERC-7930 &amp; ERC-7828
+            ENSIP-25
           </span>
           <h1 className="text-[32px] sm:text-[37.8px] font-bold tracking-[-0.756px] leading-[normal]" style={{ fontFamily: 'ABC Monument Grotesk, sans-serif', fontFeatureSettings: "'ss01'", color: `var(--color-${colorTheme}-500)` }}>
-            Interoperable Addresses
+            Agent Registry Attestation
           </h1>
+          <p className="mt-2 text-[12px] font-medium tracking-[0.24px] text-[var(--color-quartz-900)] max-w-[360px]" style={{ fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace', fontFeatureSettings: "'ss01'" }}>
+            Verify bidirectional attestations between ENS names and agent identities, or connect a wallet to set and manage attestation records.
+          </p>
         </motion.div>
-        <motion.section className="place-content-start flex flex-col max-w-[400px] mx-auto">
-          {/* Input row */}
+        <motion.section className="place-content-start flex flex-col max-w-[500px] mx-auto">
+          {/* Row 1: Resolve button + ENS Name */}
           <motion.div className="flex items-center justify-center gap-[6px] mb-[5px] min-h-[31px]" variants={scrollEnterItemVariants}>
-            {/* Play/Pause button */}
+            {/* Resolve button */}
             <motion.button
-              onClick={togglePlayPause}
+              onClick={resolveAttestation}
+              variants={buttonVariants}
+              initial="idle"
+              animate={state.status === "loading" ? "active" : "idle"}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               className="flex items-center justify-center shrink-0 aspect-square p-1.5 rounded-[3px]"
               style={{ backgroundColor: `var(--color-${colorTheme}-100)` }}
             >
-              {isPlaying ? <IconPause size={16} style={{ color: `var(--color-${colorTheme}-500)` }} /> : <IconPlay size={16} style={{ color: `var(--color-${colorTheme}-500)` }} />}
+              <IconPlay size={16} style={{ color: `var(--color-${colorTheme}-500)` }} />
             </motion.button>
-            {/* Name input pill */}
-            <div className="relative bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-2 h-full flex items-center min-w-0 flex-1 sm:flex-initial">
+
+            {/* ENS Name input pill */}
+            <div className="relative bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-2 h-full flex items-center min-w-0 flex-1">
               <div className="relative w-full">
+                {/* Intro scramble overlay */}
+                {introPhase !== "done" && (
+                  <span
+                    ref={introEnsRef}
+                    className="absolute inset-0 pointer-events-none text-[16px] sm:text-[18px] font-bold text-[var(--color-quartz-900)] flex items-center"
+                    style={{ fontFamily: 'ABC Monument Grotesk, sans-serif', fontFeatureSettings: "'ss01'" }}
+                    aria-hidden="true"
+                  />
+                )}
                 {/* Colored overlay text */}
-                {input.includes('.eth') && (
+                {introPhase === "done" && ensName.includes('.eth') && (
                   <div
                     className="absolute inset-0 pointer-events-none text-[16px] sm:text-[18px] font-bold whitespace-pre flex"
                     style={{ fontFamily: 'ABC Monument Grotesk, sans-serif', fontFeatureSettings: "'ss01'" }}
                     aria-hidden="true"
                   >
-                    <span className="text-[var(--color-quartz-900)]">{input.split('.eth')[0]}</span>
+                    <span className="text-[var(--color-quartz-900)]">{ensName.split('.eth')[0]}</span>
                     <span style={{ color: `var(--color-${colorTheme}-500)` }}>.eth</span>
-                    <span className="text-[var(--color-quartz-900)]">{input.split('.eth').slice(1).join('.eth')}</span>
+                    <span className="text-[var(--color-quartz-900)]">{ensName.split('.eth').slice(1).join('.eth')}</span>
                   </div>
                 )}
-                {/* Actual input */}
                 <input
                   type="text"
-                  value={input}
-                  onChange={(e) => handleInputChange(e.target.value)}
-                  placeholder="onshow.eth"
+                  value={ensName}
+                  onChange={(e) => { setEnsName(e.target.value); setIntroPhase("done"); }}
+                  placeholder="name.eth"
                   spellCheck={false}
-                  className="bg-transparent text-[16px] sm:text-[18px] font-bold outline-none placeholder:text-[var(--color-quartz-350)] full min-w-0 relative"
+                  className="bg-transparent text-[16px] sm:text-[18px] font-bold outline-none placeholder:text-[var(--color-quartz-350)] w-full min-w-0 relative"
                   style={{
                     fontFamily: 'ABC Monument Grotesk, sans-serif',
                     fontFeatureSettings: "'ss01'",
-                    color: input.includes('.eth') ? 'transparent' : 'var(--color-quartz-900)',
+                    color: introPhase !== "done"
+                      ? 'transparent'
+                      : ensName.includes('.eth') ? 'transparent' : 'var(--color-quartz-900)',
                     caretColor: 'var(--color-quartz-900)'
                   }}
                 />
               </div>
-              {
-                state.status === "loading" && (
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-0.5">
-                    {[0, 1, 2].map((i) => (
-                      <motion.span
-                        key={i}
-                        variants={dotVariants}
-                        initial="initial"
-                        animate="animate"
-                        className="inline-block h-1 w-1 rounded-full"
-                        style={{ backgroundColor: `var(--color-${colorTheme}-500)` }}
-                        transition={{ delay: i * 0.2 }}
-                      />
-                    ))}
-                  </div>
-                )
-              }
+              {state.status === "loading" && (
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-0.5">
+                  {[0, 1, 2].map((i) => (
+                    <motion.span
+                      key={i}
+                      variants={dotVariants}
+                      initial="initial"
+                      animate="animate"
+                      className="inline-block h-1 w-1 rounded-full"
+                      style={{ backgroundColor: `var(--color-${colorTheme}-500)` }}
+                      transition={{ delay: i * 0.2 }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+
+          {/* Row 2: Agent ID + Registry — pl offsets for resolve button width + gap to align with ENS input */}
+          <motion.div className="flex items-center justify-start gap-[6px] mb-[5px] min-h-[31px] pl-[34px]" variants={scrollEnterItemVariants}>
+            {/* Agent ID input pill */}
+            <div className="relative bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-2 h-full flex items-center min-w-0 w-[100px]">
+              {introPhase !== "done" ? (
+                <span
+                  ref={introAgentRef}
+                  className="text-[16px] sm:text-[18px] font-bold text-[var(--color-quartz-900)] whitespace-nowrap inline-block min-w-[60px] min-h-[1.5em]"
+                  style={{ fontFamily: 'ABC Monument Grotesk, sans-serif', fontFeatureSettings: "'ss01'" }}
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={agentId}
+                  onChange={(e) => setAgentId(e.target.value)}
+                  placeholder="Agent ID"
+                  spellCheck={false}
+                  className="bg-transparent text-[16px] sm:text-[18px] font-bold outline-none placeholder:text-[var(--color-quartz-350)] w-full min-w-0"
+                  style={{
+                    fontFamily: 'ABC Monument Grotesk, sans-serif',
+                    fontFeatureSettings: "'ss01'",
+                    color: 'var(--color-quartz-900)',
+                  }}
+                />
+              )}
             </div>
 
             {/* Separator diamond */}
@@ -514,37 +643,28 @@ export default function InteropAddress() {
               </div>
             </div>
 
-            {/* Chain select pill — animates when chain or format changes during autoplay */}
-            <div className="relative bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-1.5 h-full flex items-center gap-[7.6px] shrink-0 min-w-[100px] overflow-visible">
-              <div className={`relative flex items-center pr-4 flex-1 min-h-[23px] overflow-visible ${isPlaying ? "z-10" : ""}`}>
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.span
-                    key={`${chain.shortName}-${chainIdFormat}`}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    transition={{ duration: AC.NORMAL, ease: AC.EASE }}
-                    className="absolute inset-y-0 left-0 flex items-center text-[16px] sm:text-[18px] font-bold text-[var(--color-quartz-900)]"
-                    style={{ fontFamily: 'ABC Monument Grotesk, sans-serif', fontFeatureSettings: "'ss01'" }}
-                  >
-                    {chainPillDisplay}
-                  </motion.span>
-                </AnimatePresence>
+            {/* Registry dropdown pill */}
+            <div className="relative bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-1.5 h-full flex items-center gap-[7.6px] shrink-0 min-w-[120px] overflow-visible">
+              <div className="relative flex items-center pr-4 flex-1 min-h-[23px] overflow-visible">
+                <span
+                  className="text-[16px] sm:text-[18px] font-bold text-[var(--color-quartz-900)] whitespace-nowrap"
+                  style={{ fontFamily: 'ABC Monument Grotesk, sans-serif', fontFeatureSettings: "'ss01'" }}
+                >
+                  {registry.label}
+                </span>
               </div>
               <select
-                value={chain.shortName}
+                value={registry.value}
                 onChange={(e) => {
-                  setIsPlaying(false);
-                  setChainIdFormat("short");
-                  setChain(CHAINS.find((c) => c.shortName === e.target.value)!);
+                  setRegistry(REGISTRIES.find((r) => r.value === e.target.value)!);
                 }}
-                className={`absolute inset-0 w-full opacity-0 cursor-pointer appearance-none ${isPlaying ? "pointer-events-none" : ""}`}
+                className="absolute inset-0 w-full opacity-0 cursor-pointer appearance-none"
                 style={{ fontFamily: 'ABC Monument Grotesk, sans-serif', fontFeatureSettings: "'ss01'" }}
-                aria-label="Select network"
+                aria-label="Select registry"
               >
-                {CHAINS.map((c) => (
-                  <option key={c.caipId} value={c.shortName}>
-                    {c.shortName}
+                {REGISTRIES.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
                   </option>
                 ))}
               </select>
@@ -552,86 +672,151 @@ export default function InteropAddress() {
                 <path d="M4 5L0 0h8L4 5z" />
               </svg>
             </div>
-
-            {/* Calculate button */}
-            <motion.button
-              onClick={() => input.trim() && resolve(input.trim())}
-              variants={buttonVariants}
-              initial="idle"
-              animate={state.status === "loading" ? "active" : "idle"}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              disabled={!input.trim()}
-              className={`flex items-center justify-center shrink-0 w-[31px] h-[31px] rounded-[3px] transition-opacity ${!input.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
-              style={{ backgroundColor: `var(--color-${colorTheme}-100)` }}
-            >
-              <IconCalculate size={16} style={{ color: `var(--color-${colorTheme}-500)` }} />
-            </motion.button>
-
-
           </motion.div>
 
-          {/* Output Card - Shows current or archived result */}
-          <motion.div variants={scrollEnterItemVariants}>
+          {/* Output Card */}
+          <div>
             <AnimatePresence mode="wait">
-              {(state.status === "resolved" && interopName) || archivedResult ? (
+              {state.status === "resolved" && (
                 <motion.div
-                  key={(state.status === "resolved" ? state.address : archivedResult?.address ?? "") + chain.caipId}
+                  key={state.textRecordKey + state.textRecordValue}
                   variants={resultVariants}
                   initial="hidden"
                   animate="visible"
                   exit="exit"
                   className="w-100 place-self-center bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-[9px] py-[10px]"
                 >
-                  {/* Human-readable format */}
                   <div className="pt-3">
                     <OutputRow
-                      label="HUMAN-READABLE"
-                      value={state.status === "resolved" && interopName ? interopName : archivedResult?.interopName || ""}
+                      label="ENS NAME"
+                      value={ensName.trim()}
+                      accentColor={colorTheme}
+                      avatar={state.ensAvatar}
+                    />
+                  </div>
+                  <div className="pt-3">
+                    <OutputRow
+                      label="ERC-7930 ENCODED REGISTRY ADDRESS"
+                      value={state.registryAddress}
+                      mono
+                      accentColor={colorTheme}
+                    />
+                  </div>
+                  <div className="pt-3">
+                    <OutputRow
+                      label="TEXT RECORD KEY"
+                      value={state.textRecordKey}
                       mono
                       accent
                       accentColor={colorTheme}
                     />
                   </div>
-
-                  {/* Resolved address */}
                   <div className="pt-3">
                     <OutputRow
-                      label="Resolved Address"
-                      value={state.status === "resolved" ? state.address : archivedResult?.address || ""}
-                      truncated={truncate(state.status === "resolved" ? state.address : archivedResult?.address || "")}
+                      label="ATTESTATION (ENS → AGENT)"
+                      value={state.textRecordValue}
                       mono
                       accentColor={colorTheme}
                     />
                   </div>
-
-                  {/* Chain ID */}
-                  <div className="pt-3">
-                    <OutputRow
-                      label="Chain ID"
-                      value={state.status === "resolved" ? chain.caipId : archivedResult?.chainCaipId || ""}
-                      accentColor={colorTheme}
-                    />
-                  </div>
+                  {state.agentFileResult && (
+                    <div className="pt-3">
+                      <AgentFileRow result={state.agentFileResult} accentColor={colorTheme} />
+                    </div>
+                  )}
+                  {state.agentFileResult && (
+                    <div className="pt-3">
+                      <VerificationLoopRow
+                        ensToAgent={true}
+                        agentToEns={state.agentFileResult.type === "valid"}
+                        accentColor={colorTheme}
+                      />
+                    </div>
+                  )}
+                  <SetAttestationSection
+                    isConnected={isConnected}
+                    isTxPending={isTxPending}
+                    isTxConfirming={isTxConfirming}
+                    isTxConfirmed={isTxConfirmed}
+                    onWriteAttestation={handleWriteAttestation}
+                    hasExistingAttestation={state.status === "resolved"}
+                    isWrongChain={isWrongChain}
+                    requiredEnsChainId={requiredEnsChainId}
+                    onSwitchChain={(chainId) => switchChain({ chainId })}
+                    accentColor={colorTheme}
+                  />
                 </motion.div>
-              ) : null}
-
-              {state.status === "not-found" && (
-                <NotFoundMessage input={input} />
               )}
 
-              {state.status === "invalid-tld" && (
-                <motion.p
-                  key="invalid-tld"
+              {state.status === "no-attestation" && (
+                <motion.div
+                  key={"no-attestation-" + state.textRecordKey}
                   variants={resultVariants}
                   initial="hidden"
                   animate="visible"
                   exit="exit"
-                  className="mt-5 text-sm text-red-600 text-center"
-                  style={{ fontFamily: 'ABC Monument Grotesk, sans-serif' }}
+                  className="w-100 place-self-center bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-[9px] py-[10px]"
                 >
-                  Invalid domain. Only <strong>.eth</strong> names are supported.
-                </motion.p>
+                  <div className="pt-3">
+                    <OutputRow
+                      label="ENS NAME"
+                      value={ensName.trim()}
+                      accentColor={colorTheme}
+                      avatar={state.ensAvatar}
+                    />
+                  </div>
+                  <div className="pt-3">
+                    <OutputRow
+                      label="ERC-7930 ENCODED REGISTRY ADDRESS"
+                      value={state.registryAddress}
+                      mono
+                      accentColor={colorTheme}
+                    />
+                  </div>
+                  <div className="pt-3">
+                    <OutputRow
+                      label="TEXT RECORD KEY"
+                      value={state.textRecordKey}
+                      mono
+                      accent
+                      accentColor={colorTheme}
+                    />
+                  </div>
+                  <div className="pt-3">
+                    <OutputRow
+                      label="ATTESTATION (ENS → AGENT)"
+                      value="no attestation found"
+                      mono
+                      accentColor={colorTheme}
+                    />
+                  </div>
+                  {state.agentFileResult && (
+                    <div className="pt-3">
+                      <AgentFileRow result={state.agentFileResult} accentColor={colorTheme} />
+                    </div>
+                  )}
+                  {state.agentFileResult && (
+                    <div className="pt-3">
+                      <VerificationLoopRow
+                        ensToAgent={false}
+                        agentToEns={state.agentFileResult.type === "valid"}
+                        accentColor={colorTheme}
+                      />
+                    </div>
+                  )}
+                  <SetAttestationSection
+                    isConnected={isConnected}
+                    isTxPending={isTxPending}
+                    isTxConfirming={isTxConfirming}
+                    isTxConfirmed={isTxConfirmed}
+                    onWriteAttestation={handleWriteAttestation}
+                    hasExistingAttestation={false}
+                    isWrongChain={isWrongChain}
+                    requiredEnsChainId={requiredEnsChainId}
+                    onSwitchChain={(chainId) => switchChain({ chainId })}
+                    accentColor={colorTheme}
+                  />
+                </motion.div>
               )}
 
               {state.status === "error" && (
@@ -648,42 +833,214 @@ export default function InteropAddress() {
                 </motion.p>
               )}
             </AnimatePresence>
-          </motion.div>
+          </div>
         </motion.section>
       </motion.div>
     </div>
   );
 }
 
-// --- Not found message sub-component --------------------------------------
+// --- Set Attestation section -----------------------------------------------
 
-function NotFoundMessage({ input }: { input: string }) {
-  const { ref } = useScramble({
-    text: input,
-    speed: 0.6,
-    tick: 1,
-    step: 1,
-    scramble: 4,
-    seed: 0,
-  });
+function SetAttestationSection({
+  isConnected,
+  isTxPending,
+  isTxConfirming,
+  isTxConfirmed,
+  hasExistingAttestation,
+  onWriteAttestation,
+  isWrongChain,
+  requiredEnsChainId,
+  onSwitchChain,
+  accentColor,
+}: {
+  isConnected: boolean;
+  isTxPending: boolean;
+  isTxConfirming: boolean;
+  isTxConfirmed: boolean;
+  hasExistingAttestation: boolean;
+  onWriteAttestation: (value: string) => void;
+  isWrongChain: boolean;
+  requiredEnsChainId: number;
+  onSwitchChain: (chainId: number) => void;
+  accentColor: ColorTheme;
+}) {
+  const busy = isTxPending || isTxConfirming;
+
+  const targetChainName = requiredEnsChainId === 11155111 ? "Sepolia" : "Mainnet";
+
+  let statusLabel: string | null = null;
+  let statusColor = "var(--color-quartz-350)";
+  if (isTxConfirmed) {
+    statusLabel = "Confirmed — re-resolving...";
+    statusColor = `var(--color-${accentColor}-500)`;
+  } else if (isTxConfirming) {
+    statusLabel = "Confirming...";
+  } else if (isTxPending) {
+    statusLabel = "Awaiting wallet signature...";
+  }
+
+  const buttonStyle = {
+    fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace',
+    fontFeatureSettings: "'ss01'",
+  } as const;
 
   return (
-    <motion.p
-      key="not-found"
-      variants={resultVariants}
-      initial="hidden"
-      animate="visible"
-      exit="exit"
-      className="mt-5 text-sm text-[var(--color-quartz-350)] text-center"
-      style={{ fontFamily: 'ABC Monument Grotesk, sans-serif' }}
-    >
-      No address found for{" "}
-      <strong
-        ref={ref}
-        className="text-[var(--color-quartz-900)]"
-        style={{ fontFamily: 'ABC Monument Grotesk, sans-serif' }}
-      />
-    </motion.p>
+    <div className="pt-4 mt-1 border-t border-[var(--color-quartz-100)]">
+      <span
+        className="text-[11px] font-medium uppercase tracking-[0.48px] opacity-70 text-[var(--color-quartz-900)]"
+        style={{ fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace', fontFeatureSettings: "'ss01'" }}
+      >
+        MANAGE ATTESTATION
+      </span>
+      <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+        {!isConnected ? (
+          <ConnectButton.Custom>
+            {({ openConnectModal }) => (
+              <button
+                onClick={openConnectModal}
+                className="text-[12px] font-medium px-3 py-1.5 rounded-[3px] cursor-pointer"
+                style={{
+                  ...buttonStyle,
+                  backgroundColor: `var(--color-${accentColor}-100)`,
+                  color: `var(--color-${accentColor}-500)`,
+                }}
+              >
+                Connect Wallet
+              </button>
+            )}
+          </ConnectButton.Custom>
+        ) : isWrongChain ? (
+          <button
+            onClick={() => onSwitchChain(requiredEnsChainId)}
+            className="text-[12px] font-medium px-3 py-1.5 rounded-[3px] cursor-pointer"
+            style={{
+              ...buttonStyle,
+              backgroundColor: `var(--color-${accentColor}-100)`,
+              color: `var(--color-${accentColor}-500)`,
+            }}
+          >
+            Switch to {targetChainName}
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={() => onWriteAttestation("1")}
+              disabled={busy}
+              className="text-[12px] font-medium px-3 py-1.5 rounded-[3px] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{
+                ...buttonStyle,
+                backgroundColor: `var(--color-${accentColor}-100)`,
+                color: `var(--color-${accentColor}-500)`,
+              }}
+            >
+              Set Record
+            </button>
+            {hasExistingAttestation && (
+              <button
+                onClick={() => onWriteAttestation("")}
+                disabled={busy}
+                className="text-[12px] font-medium px-3 py-1.5 rounded-[3px] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  ...buttonStyle,
+                  backgroundColor: "var(--color-quartz-100)",
+                  color: "var(--color-quartz-500)",
+                }}
+              >
+                Remove Record
+              </button>
+            )}
+          </>
+        )}
+        {statusLabel && (
+          <span
+            className="text-[11px] font-medium tracking-[0.24px]"
+            style={{
+              fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace',
+              fontFeatureSettings: "'ss01'",
+              color: statusColor,
+            }}
+          >
+            {statusLabel}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// --- Agent file row sub-component -----------------------------------------
+
+function AgentFileRow({ result, accentColor }: { result: AgentFileResult; accentColor: ColorTheme }) {
+  let displayValue: string;
+  let valueColor: string;
+
+  switch (result.type) {
+    case "valid":
+      displayValue = `${result.endpoint} — Valid`;
+      valueColor = `var(--color-${accentColor}-500)`;
+      break;
+    case "invalid":
+      displayValue = `${result.endpoint} — Invalid`;
+      valueColor = "var(--color-red-500, #ef4444)";
+      break;
+    case "not-set":
+      displayValue = "Name not set";
+      valueColor = "var(--color-quartz-350)";
+      break;
+    case "error":
+      displayValue = result.message;
+      valueColor = "var(--color-quartz-350)";
+      break;
+  }
+
+  return (
+    <OutputRow
+      label="REGISTRATION (AGENT → ENS)"
+      value={displayValue}
+      mono
+      accentColor={accentColor}
+      customValueColor={valueColor}
+    />
+  );
+}
+
+// --- Verification loop sub-component --------------------------------------
+
+function VerificationLoopRow({
+  ensToAgent,
+  agentToEns,
+  accentColor,
+}: {
+  ensToAgent: boolean;
+  agentToEns: boolean;
+  accentColor: ColorTheme;
+}) {
+  const closed = ensToAgent && agentToEns;
+  let displayValue: string;
+  let valueColor: string;
+
+  if (closed) {
+    displayValue = "Closed — verified in both directions";
+    valueColor = `var(--color-${accentColor}-500)`;
+  } else if (ensToAgent) {
+    displayValue = "ENS → Agent only";
+    valueColor = "var(--color-quartz-350)";
+  } else if (agentToEns) {
+    displayValue = "Agent → ENS only";
+    valueColor = "var(--color-quartz-350)";
+  } else {
+    displayValue = "Open — no verification in either direction";
+    valueColor = "var(--color-quartz-350)";
+  }
+
+  return (
+    <OutputRow
+      label="VERIFICATION LOOP"
+      value={displayValue}
+      accentColor={accentColor}
+      customValueColor={valueColor}
+    />
   );
 }
 
@@ -696,6 +1053,8 @@ function OutputRow({
   mono,
   accent,
   accentColor,
+  customValueColor,
+  avatar,
 }: {
   label: string;
   value: string;
@@ -703,9 +1062,12 @@ function OutputRow({
   mono?: boolean;
   accent?: boolean;
   accentColor: ColorTheme;
+  customValueColor?: string;
+  avatar?: string;
 }) {
   const [copied, setCopied] = useState(false);
   const [textRevealed, setTextRevealed] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
 
   const { ref: mainRef, replay: replayMain } = useScramble({
     text: truncated ?? value,
@@ -726,7 +1088,6 @@ function OutputRow({
     seed: 0,
   });
 
-  // Replay scramble when value/truncated change; omit replay fns so effect doesn't run every render
   useEffect(() => {
     setTextRevealed(false);
     replayMain();
@@ -750,14 +1111,22 @@ function OutputRow({
       >
         {label}
       </span>
-      <div className="flex items-baseline gap-[4px]">
+      <div className={`flex ${avatar && !avatarError ? "items-center" : "items-baseline"} gap-[4px]`}>
+        {avatar && !avatarError && (
+          <img
+            src={avatar}
+            alt=""
+            className="w-[16px] h-[16px] rounded-full object-cover shrink-0"
+            onError={() => setAvatarError(true)}
+          />
+        )}
         <span
           ref={mainRef}
           className="text-[14px] sm:text-[16px] tracking-[-0.32px] break-all"
           style={{
             fontFamily: mono ? 'ABC Monument Grotesk Mono, monospace' : 'ABC Monument Grotesk Mono, monospace',
             fontFeatureSettings: "'ss01'",
-            color: accent ? `var(--color-${accentColor}-500)` : 'var(--color-quartz-900)'
+            color: customValueColor ?? (accent ? `var(--color-${accentColor}-500)` : 'var(--color-quartz-900)')
           }}
           title={value}
         />

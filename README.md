@@ -1,73 +1,45 @@
-# React + TypeScript + Vite
+# ENSIP-25 Agent Registry Attestation
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A tool for verifying and managing ENS text-record attestations between ENS names and AI agents registered in ERC-8004 agent registries.
 
-Currently, two official plugins are available:
+Given an ENS name and an agent ID, the app:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+1. Resolves the ENS text record to check whether the name owner attests to the agent (ENS -> Agent).
+2. Fetches the agent file from the registry contract to check whether the agent points back to the ENS name (Agent -> ENS).
+3. Reports the bidirectional verification loop status.
+4. Allows setting or removing the attestation text record directly via a connected wallet.
 
-## React Compiler
+## Getting Started
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```sh
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Running Tests
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Unit tests cover the extracted attestation logic (text-record key construction, agent-file URI parsing, ENS endpoint extraction, verification status):
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```sh
+npx vitest run
 ```
+
+Watch mode:
+
+```sh
+npx vitest
+```
+
+## Build
+
+```sh
+npm run build
+```
+
+## Tech Stack
+
+- React + TypeScript + Vite
+- viem for Ethereum reads
+- wagmi + RainbowKit for wallet connection and write transactions
+- Tailwind CSS v4
+- Vitest for unit tests
