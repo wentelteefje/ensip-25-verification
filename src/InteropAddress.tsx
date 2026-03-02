@@ -211,8 +211,8 @@ const scrollEnterVariants: Variants = {
   visible: {
     opacity: 1,
     transition: {
-      staggerChildren: 0.12,
-      delayChildren: 0.08,
+      staggerChildren: 0.08,
+      delayChildren: 0.04,
     },
   },
 };
@@ -223,7 +223,7 @@ const scrollEnterItemVariants: Variants = {
     opacity: 1,
     y: 0,
     filter: "blur(0px)",
-    transition: { duration: 0.45, ease: AC.EASE },
+    transition: { duration: 0.3, ease: AC.EASE },
   },
 };
 
@@ -257,7 +257,7 @@ export default function InteropAddress() {
   const abortRef = useRef<AbortController | null>(null);
 
   // Wallet state for setText
-  const { isConnected, chainId: walletChainId } = useAccount();
+  const { isConnected, address: walletAddress, chainId: walletChainId } = useAccount();
   const { writeContract, data: txHash, isPending: isTxPending, reset: resetTx } = useWriteContract();
   const { isLoading: isTxConfirming, isSuccess: isTxConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
   const { switchChain } = useSwitchChain();
@@ -284,10 +284,10 @@ export default function InteropAddress() {
 
   const { ref: introEnsRef } = useScramble({
     text: introText.ens,
-    speed: 0.6,
+    speed: 0.8,
     tick: 1,
-    step: 1,
-    scramble: 4,
+    step: 2,
+    scramble: 2,
     seed: 0,
     onAnimationEnd: () => {
       if (introPhase === "default") setIntroPhase("done");
@@ -296,10 +296,10 @@ export default function InteropAddress() {
 
   const { ref: introAgentRef } = useScramble({
     text: introText.agent,
-    speed: 0.6,
+    speed: 0.8,
     tick: 1,
-    step: 1,
-    scramble: 4,
+    step: 2,
+    scramble: 2,
     seed: 0,
   });
 
@@ -308,12 +308,12 @@ export default function InteropAddress() {
     const t1 = setTimeout(() => {
       setIntroText({ ens: "name.eth", agent: "agent ID" });
       setIntroPhase("placeholder");
-    }, 400);
+    }, 200);
     // Phase 2: scramble to real defaults
     const t2 = setTimeout(() => {
       setIntroText({ ens: ensName, agent: agentId });
       setIntroPhase("default");
-    }, 1600);
+    }, 800);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- only run on mount
   }, []);
@@ -453,6 +453,60 @@ export default function InteropAddress() {
     });
   };
 
+  // --- Permission check via setText simulation ---
+  const [canManage, setCanManage] = useState<boolean | null>(null);
+  const textRecordKeyForSim = (state.status === "resolved" || state.status === "no-attestation") ? state.textRecordKey : "";
+
+  useEffect(() => {
+    if (
+      !isConnected || !walletAddress ||
+      (state.status !== "resolved" && state.status !== "no-attestation")
+    ) {
+      setCanManage(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const trimmedName = ensName.trim();
+        if (!trimmedName) { setCanManage(false); return; }
+
+        const node = namehash(normalize(trimmedName));
+        const client = getEnsClient(registry.chainId);
+
+        const registryAddr = ENS_REGISTRY[requiredEnsChainId];
+        if (!registryAddr) { setCanManage(false); return; }
+
+        const resolverAddr = await client.readContract({
+          address: registryAddr,
+          abi: ensRegistryAbi,
+          functionName: "resolver",
+          args: [node],
+        });
+
+        if (!resolverAddr || resolverAddr === "0x0000000000000000000000000000000000000000") {
+          if (!cancelled) setCanManage(false);
+          return;
+        }
+
+        await client.simulateContract({
+          address: resolverAddr,
+          abi: resolverAbi,
+          functionName: "setText",
+          args: [node, textRecordKeyForSim, "1"],
+          account: walletAddress,
+        });
+
+        if (!cancelled) setCanManage(true);
+      } catch {
+        if (!cancelled) setCanManage(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [isConnected, walletAddress, state.status, ensName, registry, requiredEnsChainId, textRecordKeyForSim]);
+
   return (
     <div className="w-full min-h-screen bg-[var(--color-quartz-0)] antialiased flex items-center justify-center relative overflow-hidden">
       {/* Background pattern */}
@@ -534,6 +588,13 @@ export default function InteropAddress() {
           </p>
         </motion.div>
         <motion.section className="place-content-start flex flex-col max-w-[500px] mx-auto">
+          {/* Row 1 label */}
+          <div className="pl-[34px] mb-[2px]">
+            <span className="text-[11px] font-medium uppercase tracking-[0.48px] opacity-70 text-[var(--color-quartz-900)]"
+              style={{ fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace', fontFeatureSettings: "'ss01'" }}>
+              ENS NAME
+            </span>
+          </div>
           {/* Row 1: Resolve button + ENS Name */}
           <motion.div className="flex items-center justify-center gap-[6px] mb-[5px] min-h-[31px]" variants={scrollEnterItemVariants}>
             {/* Resolve button */}
@@ -577,7 +638,7 @@ export default function InteropAddress() {
                 <input
                   type="text"
                   value={ensName}
-                  onChange={(e) => { setEnsName(e.target.value); setIntroPhase("done"); }}
+                  onChange={(e) => { setEnsName(e.target.value); setIntroPhase("done"); setState({ status: "idle" }); }}
                   placeholder="name.eth"
                   spellCheck={false}
                   className="bg-transparent text-[16px] sm:text-[18px] font-bold outline-none placeholder:text-[var(--color-quartz-350)] w-full min-w-0 relative"
@@ -609,6 +670,18 @@ export default function InteropAddress() {
             </div>
           </motion.div>
 
+          {/* Row 2 labels */}
+          <div className="flex items-center gap-[6px] pl-[34px] mb-[2px]">
+            <span className="text-[11px] font-medium uppercase tracking-[0.48px] opacity-70 text-[var(--color-quartz-900)] w-[100px]"
+              style={{ fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace', fontFeatureSettings: "'ss01'" }}>
+              AGENT ID
+            </span>
+            <span className="w-[5.759px] shrink-0" />
+            <span className="text-[11px] font-medium uppercase tracking-[0.48px] opacity-70 text-[var(--color-quartz-900)]"
+              style={{ fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace', fontFeatureSettings: "'ss01'" }}>
+              REGISTRY
+            </span>
+          </div>
           {/* Row 2: Agent ID + Registry — pl offsets for resolve button width + gap to align with ENS input */}
           <motion.div className="flex items-center justify-start gap-[6px] mb-[5px] min-h-[31px] pl-[34px]" variants={scrollEnterItemVariants}>
             {/* Agent ID input pill */}
@@ -623,7 +696,7 @@ export default function InteropAddress() {
                 <input
                   type="text"
                   value={agentId}
-                  onChange={(e) => setAgentId(e.target.value)}
+                  onChange={(e) => { setAgentId(e.target.value); setState({ status: "idle" }); }}
                   placeholder="Agent ID"
                   spellCheck={false}
                   className="bg-transparent text-[16px] sm:text-[18px] font-bold outline-none placeholder:text-[var(--color-quartz-350)] w-full min-w-0"
@@ -657,6 +730,7 @@ export default function InteropAddress() {
                 value={registry.value}
                 onChange={(e) => {
                   setRegistry(REGISTRIES.find((r) => r.value === e.target.value)!);
+                  setState({ status: "idle" });
                 }}
                 className="absolute inset-0 w-full opacity-0 cursor-pointer appearance-none"
                 style={{ fontFamily: 'ABC Monument Grotesk, sans-serif', fontFeatureSettings: "'ss01'" }}
@@ -700,6 +774,7 @@ export default function InteropAddress() {
                       value={state.registryAddress}
                       mono
                       accentColor={colorTheme}
+                      scrambleStep={3}
                     />
                   </div>
                   <div className="pt-3">
@@ -709,6 +784,7 @@ export default function InteropAddress() {
                       mono
                       accent
                       accentColor={colorTheme}
+                      scrambleStep={3}
                     />
                   </div>
                   <div className="pt-3">
@@ -733,18 +809,20 @@ export default function InteropAddress() {
                       />
                     </div>
                   )}
-                  <SetAttestationSection
-                    isConnected={isConnected}
-                    isTxPending={isTxPending}
-                    isTxConfirming={isTxConfirming}
-                    isTxConfirmed={isTxConfirmed}
-                    onWriteAttestation={handleWriteAttestation}
-                    hasExistingAttestation={state.status === "resolved"}
-                    isWrongChain={isWrongChain}
-                    requiredEnsChainId={requiredEnsChainId}
-                    onSwitchChain={(chainId) => switchChain({ chainId })}
-                    accentColor={colorTheme}
-                  />
+                  {canManage !== false && (
+                    <SetAttestationSection
+                      isConnected={isConnected}
+                      isTxPending={isTxPending}
+                      isTxConfirming={isTxConfirming}
+                      isTxConfirmed={isTxConfirmed}
+                      onWriteAttestation={handleWriteAttestation}
+                      hasExistingAttestation={state.status === "resolved"}
+                      isWrongChain={isWrongChain}
+                      requiredEnsChainId={requiredEnsChainId}
+                      onSwitchChain={(chainId) => switchChain({ chainId })}
+                      accentColor={colorTheme}
+                    />
+                  )}
                 </motion.div>
               )}
 
@@ -771,6 +849,7 @@ export default function InteropAddress() {
                       value={state.registryAddress}
                       mono
                       accentColor={colorTheme}
+                      scrambleStep={3}
                     />
                   </div>
                   <div className="pt-3">
@@ -780,6 +859,7 @@ export default function InteropAddress() {
                       mono
                       accent
                       accentColor={colorTheme}
+                      scrambleStep={3}
                     />
                   </div>
                   <div className="pt-3">
@@ -804,18 +884,20 @@ export default function InteropAddress() {
                       />
                     </div>
                   )}
-                  <SetAttestationSection
-                    isConnected={isConnected}
-                    isTxPending={isTxPending}
-                    isTxConfirming={isTxConfirming}
-                    isTxConfirmed={isTxConfirmed}
-                    onWriteAttestation={handleWriteAttestation}
-                    hasExistingAttestation={false}
-                    isWrongChain={isWrongChain}
-                    requiredEnsChainId={requiredEnsChainId}
-                    onSwitchChain={(chainId) => switchChain({ chainId })}
-                    accentColor={colorTheme}
-                  />
+                  {canManage !== false && (
+                    <SetAttestationSection
+                      isConnected={isConnected}
+                      isTxPending={isTxPending}
+                      isTxConfirming={isTxConfirming}
+                      isTxConfirmed={isTxConfirmed}
+                      onWriteAttestation={handleWriteAttestation}
+                      hasExistingAttestation={false}
+                      isWrongChain={isWrongChain}
+                      requiredEnsChainId={requiredEnsChainId}
+                      onSwitchChain={(chainId) => switchChain({ chainId })}
+                      accentColor={colorTheme}
+                    />
+                  )}
                 </motion.div>
               )}
 
@@ -1055,6 +1137,7 @@ function OutputRow({
   accentColor,
   customValueColor,
   avatar,
+  scrambleStep,
 }: {
   label: string;
   value: string;
@@ -1064,6 +1147,7 @@ function OutputRow({
   accentColor: ColorTheme;
   customValueColor?: string;
   avatar?: string;
+  scrambleStep?: number;
 }) {
   const [copied, setCopied] = useState(false);
   const [textRevealed, setTextRevealed] = useState(false);
@@ -1073,7 +1157,7 @@ function OutputRow({
     text: truncated ?? value,
     speed: 0.6,
     tick: 1,
-    step: 1,
+    step: scrambleStep ?? 1,
     scramble: 4,
     seed: 0,
     onAnimationEnd: () => setTextRevealed(true),
@@ -1083,7 +1167,7 @@ function OutputRow({
     text: value,
     speed: 0.6,
     tick: 1,
-    step: 1,
+    step: scrambleStep ?? 1,
     scramble: 4,
     seed: 0,
   });
