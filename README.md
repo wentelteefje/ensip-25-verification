@@ -43,3 +43,7 @@ npm run build
 - wagmi + RainbowKit for wallet connection and write transactions
 - Tailwind CSS v4
 - Vitest for unit tests
+
+## Demo animation
+
+A self-contained, non-interactive animation version (for blog embedding) lives on the [`demo-animation`](../../tree/demo-animation) branch.
