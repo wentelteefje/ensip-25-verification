@@ -2,6 +2,11 @@
   command = "npm run build"
   publish = "dist"
 
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.cdnfonts.com; font-src 'self' https://fonts.cdnfonts.com; connect-src 'self' *; img-src 'self' * data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
