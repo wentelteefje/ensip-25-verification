@@ -577,28 +577,11 @@ export default function AttestationVerifier() {
         viewport={{ once: true, amount: 0.2, margin: "-80px" }}
       >
         {/* Header */}
-        <motion.div className="mb-6 text-left w-fit mx-auto flex flex-col gap-0" variants={scrollEnterItemVariants}>
+        <motion.div className="mb-6 text-center w-fit mx-auto flex flex-col items-center gap-0" variants={scrollEnterItemVariants}>
           <span className="inline-block mb-2 text-[12px] font-medium tracking-[0.48px] uppercase text-[var(--color-quartz-900)]" style={{ fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace', fontFeatureSettings: "'ss01'" }}>
             ENSIP-25
           </span>
-          <h1 className="text-[32px] sm:text-[37.8px] font-bold tracking-[-0.756px] leading-[normal]" style={{ fontFamily: 'ABC Monument Grotesk, sans-serif', fontFeatureSettings: "'ss01'", color: `var(--color-${colorTheme}-500)` }}>
-            Agent Registry Attestation
-          </h1>
-          <p className="mt-2 text-[12px] font-medium tracking-[0.24px] text-[var(--color-quartz-900)] max-w-[360px]" style={{ fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace', fontFeatureSettings: "'ss01'" }}>
-            Verify bidirectional attestations between ENS names and agent registrations, or connect a wallet to set and manage attestation records. See the <a href="https://docs.ens.domains/ensip/25" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-80 transition-opacity" style={{ color: 'inherit' }}>ENSIP-25 specification</a> for details.
-          </p>
-        </motion.div>
-        <motion.section className="place-content-start flex flex-col max-w-[500px] mx-auto">
-          {/* Row 1 label */}
-          <div className="pl-[34px] mb-[2px]">
-            <span className="text-[11px] font-medium uppercase tracking-[0.48px] opacity-70 text-[var(--color-quartz-900)]"
-              style={{ fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace', fontFeatureSettings: "'ss01'" }}>
-              ENS NAME
-            </span>
-          </div>
-          {/* Row 1: Resolve button + ENS Name */}
-          <motion.div className="flex items-center justify-center gap-[6px] mb-[5px] min-h-[31px]" variants={scrollEnterItemVariants}>
-            {/* Resolve button */}
+          <div className="flex items-center gap-[8px]">
             <motion.button
               onClick={resolveAttestation}
               variants={buttonVariants}
@@ -611,7 +594,24 @@ export default function AttestationVerifier() {
             >
               <IconPlay size={16} style={{ color: `var(--color-${colorTheme}-500)` }} />
             </motion.button>
-
+            <h1 className="text-[32px] sm:text-[37.8px] font-bold tracking-[-0.756px] leading-[normal]" style={{ fontFamily: 'ABC Monument Grotesk, sans-serif', fontFeatureSettings: "'ss01'", color: `var(--color-${colorTheme}-500)` }}>
+              Agent Registry Attestation
+            </h1>
+          </div>
+          <p className="mt-2 text-[12px] font-medium tracking-[0.24px] text-[var(--color-quartz-900)] max-w-[360px]" style={{ fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace', fontFeatureSettings: "'ss01'" }}>
+            Verify bidirectional attestations between ENS names and agent registrations, or connect a wallet to set and manage attestation records. See the <a href="https://docs.ens.domains/ensip/25" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-80 transition-opacity" style={{ color: 'inherit' }}>ENSIP-25 specification</a> for details.
+          </p>
+        </motion.div>
+        <motion.section className="place-content-start flex flex-col max-w-[500px] mx-auto">
+          {/* Row 1 label */}
+          <div className="mb-[2px]">
+            <span className="text-[11px] font-medium uppercase tracking-[0.48px] opacity-70 text-[var(--color-quartz-900)]"
+              style={{ fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace', fontFeatureSettings: "'ss01'" }}>
+              ENS NAME
+            </span>
+          </div>
+          {/* Row 1: Resolve button + ENS Name */}
+          <motion.div className="flex items-center justify-center gap-[6px] mb-[5px] min-h-[31px]" variants={scrollEnterItemVariants}>
             {/* ENS Name input pill */}
             <div className="relative bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-2 h-full flex items-center min-w-0 flex-1">
               <div className="relative w-full">
@@ -672,7 +672,7 @@ export default function AttestationVerifier() {
           </motion.div>
 
           {/* Row 2 labels */}
-          <div className="flex items-center gap-[6px] pl-[34px] mb-[2px]">
+          <div className="flex items-center gap-[6px] mb-[2px]">
             <span className="text-[11px] font-medium uppercase tracking-[0.48px] opacity-70 text-[var(--color-quartz-900)] w-[100px]"
               style={{ fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace', fontFeatureSettings: "'ss01'" }}>
               AGENT ID
@@ -684,7 +684,7 @@ export default function AttestationVerifier() {
             </span>
           </div>
           {/* Row 2: Agent ID + Registry — pl offsets for resolve button width + gap to align with ENS input */}
-          <motion.div className="flex items-center justify-start gap-[6px] mb-[5px] min-h-[31px] pl-[34px]" variants={scrollEnterItemVariants}>
+          <motion.div className="flex items-center justify-start gap-[6px] mb-[5px] min-h-[31px]" variants={scrollEnterItemVariants}>
             {/* Agent ID input pill */}
             <div className="relative bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-2 h-full flex items-center min-w-0 w-[100px]">
               {introPhase !== "done" ? (
@@ -750,7 +750,7 @@ export default function AttestationVerifier() {
           </motion.div>
 
           {/* Output Card */}
-          <div className="pl-[34px]">
+          <div>
             <AnimatePresence mode="wait">
               {state.status === "resolved" && (
                 <motion.div
