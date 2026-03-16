@@ -4,7 +4,7 @@ import { mainnet, sepolia } from "wagmi/chains";
 
 export const wagmiConfig = getDefaultConfig({
   appName: "ENSIP-25 Attestation",
-  projectId: "ENSIP25_INJECTED_ONLY",
+  projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "ENSIP25_INJECTED_ONLY",
   chains: [mainnet, sepolia],
   transports: {
     [mainnet.id]: http("https://eth.drpc.org"),

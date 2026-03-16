@@ -1,7 +1,7 @@
-@import "tailwindcss";
-
 /* ABC Monument Grotesk font family */
 @import url('https://fonts.cdnfonts.com/css/abc-monument-grotesk');
+
+@import "tailwindcss";
 
 /* Reset for embedding */
 body {

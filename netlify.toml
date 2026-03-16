@@ -7,7 +7,7 @@
   [headers.values]
     # Hardened CSP per team guide. connect-src uses https: (not explicit allowlist)
     # because the app fetches arbitrary tokenURI URLs and ENS avatars at runtime.
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.cdnfonts.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.cdnfonts.com; connect-src 'self' https:; frame-src 'self'; frame-ancestors 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.cdnfonts.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.cdnfonts.com; connect-src 'self' https: wss://relay.walletconnect.org; frame-src 'self'; frame-ancestors 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;"
 
 [[redirects]]
   from = "/*"
