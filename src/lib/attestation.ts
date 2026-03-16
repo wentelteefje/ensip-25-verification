@@ -1,6 +1,6 @@
 /**
  * Pure helper functions for agent-registry attestation logic.
- * Extracted from InteropAddress.tsx for testability.
+ * Extracted from AttestationVerifier.tsx for testability.
  */
 
 // --- Types -----------------------------------------------------------------

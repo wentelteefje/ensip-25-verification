@@ -13,6 +13,7 @@
     "@rainbow-me/rainbowkit": "^2.2.10",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-query": "^5.90.21",
+    "@wonderland/interop-addresses": "^0.4.0",
     "@xyflow/react": "^12.10.0",
     "agentation": "^2.2.1",
     "motion": "^12.34.0",

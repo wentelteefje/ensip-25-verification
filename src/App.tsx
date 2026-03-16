@@ -1,7 +1,7 @@
 import { Agentation } from "agentation";
 import { Route, Routes } from "react-router-dom";
 import "./App.css";
-import InteropAddress from "./InteropAddress";
+import AttestationVerifier from "./AttestationVerifier";
 import NewPage from "./pages/NewPage";
 
 /**
@@ -12,7 +12,7 @@ function App() {
   return (
     <div className="h-screen w-screen overflow-hidden">
       <Routes>
-        <Route path="/" element={<InteropAddress />} />
+        <Route path="/" element={<AttestationVerifier />} />
         <Route path="/new" element={<NewPage />} />
       </Routes>
       {import.meta.env.DEV && <Agentation />}

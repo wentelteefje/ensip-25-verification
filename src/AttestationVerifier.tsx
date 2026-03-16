@@ -1,5 +1,5 @@
 /**
- * InteropAddress — Agent Registry Attestation lookup tool.
+ * AttestationVerifier — Agent Registry Attestation lookup tool.
  * Looks up ENS text records to verify whether an ENS name owner attests
  * to an AI agent registered in an ERC-8004 agent registry.
  */
@@ -8,7 +8,8 @@ import { motion, AnimatePresence, type Variants } from "motion/react";
 import { useScramble } from "use-scramble";
 import { createPublicClient, http, namehash, type Chain, type PublicClient } from "viem";
 import { normalize } from "viem/ens";
-import { mainnet, sepolia, base, baseSepolia } from "viem/chains";
+import { mainnet, sepolia, base, baseSepolia, arbitrum, arbitrumSepolia, optimism, optimismSepolia, polygon, polygonAmoy } from "viem/chains";
+import { encodeAddress } from "@wonderland/interop-addresses";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 
@@ -24,7 +25,7 @@ import {
 
 // Map any chain to the ENS-capable chain it belongs to.
 // Mainnets (1, 8453) → Ethereum mainnet; testnets (11155111, 84532) → Sepolia.
-const TESTNET_CHAIN_IDS = new Set([11155111, 84532]);
+const TESTNET_CHAIN_IDS = new Set([11155111, 84532, 421614, 11155420, 80002]);
 
 function getEnsClient(registryChainId?: number): PublicClient {
   const ensChainId = registryChainId && TESTNET_CHAIN_IDS.has(registryChainId) ? 11155111 : 1;
@@ -36,6 +37,12 @@ const chainConfigs: Record<number, { chain: Chain; rpc: string }> = {
   11155111: { chain: sepolia, rpc: "https://sepolia.drpc.org" },
   8453: { chain: base, rpc: "https://base.drpc.org" },
   84532: { chain: baseSepolia, rpc: "https://base-sepolia.drpc.org" },
+  42161: { chain: arbitrum, rpc: "https://arbitrum.drpc.org" },
+  421614: { chain: arbitrumSepolia, rpc: "https://arbitrum-sepolia.drpc.org" },
+  10: { chain: optimism, rpc: "https://optimism.drpc.org" },
+  11155420: { chain: optimismSepolia, rpc: "https://optimism-sepolia.drpc.org" },
+  137: { chain: polygon, rpc: "https://polygon.drpc.org" },
+  80002: { chain: polygonAmoy, rpc: "https://polygon-amoy.drpc.org" },
 };
 
 const clientCache = new Map<number, PublicClient>();
@@ -59,32 +66,26 @@ interface Registry {
   chainId: number;
 }
 
-const REGISTRIES: Registry[] = [
-  {
-    label: "8004 @ Ethereum Mainnet",
-    value: "0x000100000101148004a169fb4a3325136eb29fa0ceb6d2e539a432",
-    contractAddress: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
-    chainId: 1,
-  },
-  {
-    label: "8004 @ Ethereum Sepolia",
-    value: "0x0001000003aa36a7148004a818bfb912233c491871b3d84c89a494bd9e",
-    contractAddress: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
-    chainId: 11155111,
-  },
-  {
-    label: "8004 @ Base Mainnet",
-    value: "0x00010000022105148004a169fb4a3325136eb29fa0ceb6d2e539a432",
-    contractAddress: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
-    chainId: 8453,
-  },
-  {
-    label: "8004 @ Base Sepolia",
-    value: "0x0001000003014a34148004a818bfb912233c491871b3d84c89a494bd9e",
-    contractAddress: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
-    chainId: 84532,
-  },
+const REGISTRY_SOURCES: { label: string; contractAddress: `0x${string}`; chainId: number }[] = [
+  { label: "8004 @ Ethereum Mainnet",    contractAddress: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432", chainId: 1 },
+  { label: "8004 @ Ethereum Sepolia",    contractAddress: "0x8004A818BFB912233c491871b3d84c89A494BD9e", chainId: 11155111 },
+  { label: "8004 @ Base Mainnet",        contractAddress: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432", chainId: 8453 },
+  { label: "8004 @ Base Sepolia",        contractAddress: "0x8004A818BFB912233c491871b3d84c89A494BD9e", chainId: 84532 },
+  { label: "8004 @ Arbitrum Mainnet",    contractAddress: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432", chainId: 42161 },
+  { label: "8004 @ Arbitrum Sepolia",    contractAddress: "0x8004A818BFB912233c491871b3d84c89A494BD9e", chainId: 421614 },
+  { label: "8004 @ Optimism Mainnet",    contractAddress: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432", chainId: 10 },
+  { label: "8004 @ Optimism Sepolia",    contractAddress: "0x8004A818BFB912233c491871b3d84c89A494BD9e", chainId: 11155420 },
+  { label: "8004 @ Polygon Mainnet",     contractAddress: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432", chainId: 137 },
+  { label: "8004 @ Polygon Amoy",        contractAddress: "0x8004A818BFB912233c491871b3d84c89A494BD9e", chainId: 80002 },
 ];
+
+const REGISTRIES: Registry[] = REGISTRY_SOURCES.map((s) => ({
+  ...s,
+  value: encodeAddress(
+    { version: 1, chainType: "eip155", chainReference: String(s.chainId), address: s.contractAddress },
+    { format: "hex" },
+  ),
+}));
 
 // --- ABI fragments ---------------------------------------------------------
 
@@ -248,7 +249,7 @@ function getRandomColor(): ColorTheme {
 
 // --- Component ------------------------------------------------------------
 
-export default function InteropAddress() {
+export default function AttestationVerifier() {
   const [ensName, setEnsName] = useState("ens-registration-agent.ses.eth");
   const [agentId, setAgentId] = useState("26433");
   const [registry, setRegistry] = useState<Registry>(REGISTRIES[0]);
@@ -584,7 +585,7 @@ export default function InteropAddress() {
             Agent Registry Attestation
           </h1>
           <p className="mt-2 text-[12px] font-medium tracking-[0.24px] text-[var(--color-quartz-900)] max-w-[360px]" style={{ fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace', fontFeatureSettings: "'ss01'" }}>
-            Verify bidirectional attestations between ENS names and agent identities, or connect a wallet to set and manage attestation records.
+            Verify bidirectional attestations between ENS names and agent registrations, or connect a wallet to set and manage attestation records. See the <a href="https://docs.ens.domains/ensip/25" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-80 transition-opacity" style={{ color: 'inherit' }}>ENSIP-25 specification</a> for details.
           </p>
         </motion.div>
         <motion.section className="place-content-start flex flex-col max-w-[500px] mx-auto">
@@ -671,7 +672,7 @@ export default function InteropAddress() {
           </motion.div>
 
           {/* Row 2 labels */}
-          <div className="flex items-center gap-[6px] pl-[34px] mb-[2px]">
+          <div className="flex items-center gap-[6px] mb-[2px]">
             <span className="text-[11px] font-medium uppercase tracking-[0.48px] opacity-70 text-[var(--color-quartz-900)] w-[100px]"
               style={{ fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace', fontFeatureSettings: "'ss01'" }}>
               AGENT ID
@@ -683,7 +684,7 @@ export default function InteropAddress() {
             </span>
           </div>
           {/* Row 2: Agent ID + Registry — pl offsets for resolve button width + gap to align with ENS input */}
-          <motion.div className="flex items-center justify-start gap-[6px] mb-[5px] min-h-[31px] pl-[34px]" variants={scrollEnterItemVariants}>
+          <motion.div className="flex items-center justify-start gap-[6px] mb-[5px] min-h-[31px]" variants={scrollEnterItemVariants}>
             {/* Agent ID input pill */}
             <div className="relative bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-2 h-full flex items-center min-w-0 w-[100px]">
               {introPhase !== "done" ? (
@@ -717,7 +718,7 @@ export default function InteropAddress() {
             </div>
 
             {/* Registry dropdown pill */}
-            <div className="relative bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-1.5 h-full flex items-center gap-[7.6px] shrink-0 min-w-[120px] overflow-visible">
+            <div className="relative bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-1.5 h-full flex items-center gap-[7.6px] min-w-[120px] flex-1 overflow-visible">
               <div className="relative flex items-center pr-4 flex-1 min-h-[23px] overflow-visible">
                 <span
                   className="text-[16px] sm:text-[18px] font-bold text-[var(--color-quartz-900)] whitespace-nowrap"
@@ -758,7 +759,7 @@ export default function InteropAddress() {
                   initial="hidden"
                   animate="visible"
                   exit="exit"
-                  className="w-100 place-self-center bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-[9px] py-[10px]"
+                  className="w-full bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-[9px] py-[10px]"
                 >
                   <div className="pt-3">
                     <OutputRow
@@ -775,6 +776,7 @@ export default function InteropAddress() {
                       mono
                       accentColor={colorTheme}
                       scrambleStep={3}
+                      labelLink="https://eips.ethereum.org/EIPS/eip-7930"
                     />
                   </div>
                   <div className="pt-3">
@@ -793,6 +795,7 @@ export default function InteropAddress() {
                       value={state.textRecordValue}
                       mono
                       accentColor={colorTheme}
+                      hideCopy
                     />
                   </div>
                   {state.agentFileResult && (
@@ -833,7 +836,7 @@ export default function InteropAddress() {
                   initial="hidden"
                   animate="visible"
                   exit="exit"
-                  className="w-100 place-self-center bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-[9px] py-[10px]"
+                  className="w-full bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-[9px] py-[10px]"
                 >
                   <div className="pt-3">
                     <OutputRow
@@ -850,6 +853,7 @@ export default function InteropAddress() {
                       mono
                       accentColor={colorTheme}
                       scrambleStep={3}
+                      labelLink="https://eips.ethereum.org/EIPS/eip-7930"
                     />
                   </div>
                   <div className="pt-3">
@@ -868,6 +872,7 @@ export default function InteropAddress() {
                       value="no attestation found"
                       mono
                       accentColor={colorTheme}
+                      hideCopy
                     />
                   </div>
                   {state.agentFileResult && (
@@ -1083,6 +1088,7 @@ function AgentFileRow({ result, accentColor }: { result: AgentFileResult; accent
       mono
       accentColor={accentColor}
       customValueColor={valueColor}
+      hideCopy
     />
   );
 }
@@ -1122,6 +1128,7 @@ function VerificationLoopRow({
       value={displayValue}
       accentColor={accentColor}
       customValueColor={valueColor}
+      hideCopy
     />
   );
 }
@@ -1138,6 +1145,8 @@ function OutputRow({
   customValueColor,
   avatar,
   scrambleStep,
+  labelLink,
+  hideCopy,
 }: {
   label: string;
   value: string;
@@ -1148,6 +1157,8 @@ function OutputRow({
   customValueColor?: string;
   avatar?: string;
   scrambleStep?: number;
+  labelLink?: string;
+  hideCopy?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const [textRevealed, setTextRevealed] = useState(false);
@@ -1194,6 +1205,17 @@ function OutputRow({
         style={{ fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace', fontFeatureSettings: "'ss01'" }}
       >
         {label}
+        {labelLink && (
+          <a
+            href={labelLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-[4px] opacity-50 hover:opacity-100 transition-opacity"
+            style={{ textDecoration: 'none', color: 'inherit' }}
+          >
+            [?]
+          </a>
+        )}
       </span>
       <div className={`flex ${avatar && !avatarError ? "items-center" : "items-baseline"} gap-[4px]`}>
         {avatar && !avatarError && (
@@ -1214,7 +1236,7 @@ function OutputRow({
           }}
           title={value}
         />
-        {textRevealed && value && (
+        {textRevealed && value && !hideCopy && (
           <motion.button
             variants={{
               hidden: { opacity: 0, scale: 0.8 },
