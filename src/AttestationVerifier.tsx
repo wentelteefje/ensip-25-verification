@@ -509,7 +509,7 @@ export default function AttestationVerifier() {
   }, [isConnected, walletAddress, state.status, ensName, registry, requiredEnsChainId, textRecordKeyForSim]);
 
   return (
-    <div className="w-full min-h-screen bg-[var(--color-quartz-0)] antialiased flex items-center justify-center relative overflow-hidden">
+    <div className="w-full min-h-screen bg-[var(--color-quartz-0)] antialiased flex items-center justify-center relative overflow-x-hidden">
       {/* Background pattern */}
       <motion.div
         className="absolute inset-0 flex items-center justify-center"
@@ -672,7 +672,7 @@ export default function AttestationVerifier() {
           </motion.div>
 
           {/* Row 2 labels */}
-          <div className="flex items-center gap-[6px] mb-[2px]">
+          <div className="flex items-center gap-[6px] pl-[34px] mb-[2px]">
             <span className="text-[11px] font-medium uppercase tracking-[0.48px] opacity-70 text-[var(--color-quartz-900)] w-[100px]"
               style={{ fontFamily: 'ABC Monument Grotesk Semi-Mono, monospace', fontFeatureSettings: "'ss01'" }}>
               AGENT ID
@@ -684,7 +684,7 @@ export default function AttestationVerifier() {
             </span>
           </div>
           {/* Row 2: Agent ID + Registry — pl offsets for resolve button width + gap to align with ENS input */}
-          <motion.div className="flex items-center justify-start gap-[6px] mb-[5px] min-h-[31px]" variants={scrollEnterItemVariants}>
+          <motion.div className="flex items-center justify-start gap-[6px] mb-[5px] min-h-[31px] pl-[34px]" variants={scrollEnterItemVariants}>
             {/* Agent ID input pill */}
             <div className="relative bg-[var(--color-quartz-50)] border border-[var(--color-quartz-100)] rounded-[3px] px-2 h-full flex items-center min-w-0 w-[100px]">
               {introPhase !== "done" ? (
@@ -750,7 +750,7 @@ export default function AttestationVerifier() {
           </motion.div>
 
           {/* Output Card */}
-          <div>
+          <div className="pl-[34px]">
             <AnimatePresence mode="wait">
               {state.status === "resolved" && (
                 <motion.div
@@ -812,7 +812,7 @@ export default function AttestationVerifier() {
                       />
                     </div>
                   )}
-                  {canManage !== false && (
+                  {(!isConnected || canManage === true) && (
                     <SetAttestationSection
                       isConnected={isConnected}
                       isTxPending={isTxPending}
@@ -889,7 +889,7 @@ export default function AttestationVerifier() {
                       />
                     </div>
                   )}
-                  {canManage !== false && (
+                  {(!isConnected || canManage === true) && (
                     <SetAttestationSection
                       isConnected={isConnected}
                       isTxPending={isTxPending}
